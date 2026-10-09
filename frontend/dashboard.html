@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f3f6f4">
+  <title>STORE SG | CRM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #18302b;
+      --muted: #75817d;
+      --line: #e4eae6;
+      --paper: #ffffff;
+      --canvas: #f3f6f4;
+      --green: #187760;
+      --green-soft: #e8f4ef;
+      --coral: #d45d42;
+      --coral-soft: #fff0eb;
+      --gold: #bd842a;
+      --gold-soft: #fbf3e4;
+      --shadow: 0 12px 36px rgba(28, 53, 45, .06);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--canvas); color: var(--ink); font: 14px/1.5 'DM Sans', sans-serif; }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    .app { min-height: 100vh; display: grid; grid-template-columns: 238px minmax(0, 1fr); }
+    .sidebar { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; padding: 27px 17px 18px; background: var(--paper); border-right: 1px solid var(--line); }
+    .brand { display: flex; align-items: center; gap: 11px; padding: 0 9px 33px; }
+    .brand-mark { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; background: var(--ink); color: white; font: 800 13px Manrope, sans-serif; letter-spacing: .04em; }
+    .brand-name { font: 800 14px Manrope, sans-serif; letter-spacing: .04em; }
+    .brand-sub { color: var(--muted); font-size: 11px; }
+    .nav-label { padding: 0 11px 8px; color: #9aa49f; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; }
+    .nav { display: grid; gap: 4px; }
+    .nav button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 12px; border: 0; border-radius: 7px; background: transparent; color: #5f6d67; text-align: left; font-weight: 600; }
+    .nav button:hover { background: #f5f8f6; color: var(--ink); }
+    .nav button.active { background: var(--green-soft); color: var(--green); }
+    .nav-symbol { width: 17px; color: currentColor; text-align: center; font: 700 16px Manrope, sans-serif; }
+    .sidebar-bottom { margin-top: auto; padding: 14px 9px 0; border-top: 1px solid var(--line); }
+    .store-status { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+    .pulse { width: 8px; height: 8px; border-radius: 50%; background: #36a77d; box-shadow: 0 0 0 4px #e8f4ef; }
+    .sidebar-links { display: flex; gap: 14px; margin-top: 15px; }
+    .sidebar-links button, .sidebar-links a { padding: 0; border: 0; background: none; color: var(--muted); text-decoration: none; font-size: 12px; }
+    .main { min-width: 0; padding: 27px clamp(18px, 3vw, 42px) 42px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 27px; }
+    .eyebrow { margin: 0 0 3px; color: var(--green); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { margin-bottom: 0; font: 800 clamp(23px, 2.4vw, 30px)/1.2 Manrope, sans-serif; }
+    .subhead { margin: 7px 0 0; color: var(--muted); }
+    .top-actions { display: flex; align-items: center; gap: 9px; }
+    .select, .button { min-height: 39px; border: 1px solid var(--line); border-radius: 6px; background: white; color: var(--ink); }
+    .select { padding: 0 32px 0 11px; }
+    .button { display: inline-flex; justify-content: center; align-items: center; gap: 7px; padding: 0 13px; font-weight: 600; }
+    .button:hover { border-color: #b8c9c0; background: #fbfdfb; }
+    .button-primary { border-color: var(--green); background: var(--green); color: white; }
+    .button-primary:hover { border-color: #12614d; background: #12614d; }
+    .view { display: none; animation: enter .22s ease-out; }
+    .view.active { display: block; }
+    @keyframes enter { from { opacity: .3; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; margin-bottom: 15px; }
+    .kpi, .panel { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
+    .kpi { min-height: 137px; padding: 17px 18px; }
+    .kpi-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 12px; font-weight: 600; }
+    .kpi-mark { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 7px; background: var(--green-soft); color: var(--green); font: 700 14px Manrope, sans-serif; }
+    .kpi-mark.coral { background: var(--coral-soft); color: var(--coral); }
+    .kpi-mark.gold { background: var(--gold-soft); color: var(--gold); }
+    .kpi-value { overflow: hidden; margin-top: 15px; font: 800 clamp(23px, 2.3vw, 29px)/1.1 Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+    .kpi-foot { margin-top: 6px; color: var(--muted); font-size: 11px; }
+    .overview-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(270px, .85fr); gap: 15px; margin-bottom: 15px; }
+    .panel { min-width: 0; padding: 19px; }
+    .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 17px; }
+    .panel-title { margin: 0; font: 700 15px Manrope, sans-serif; }
+    .panel-note { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .legend { display: flex; align-items: center; gap: 13px; color: var(--muted); font-size: 11px; }
+    .legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .legend i { width: 7px; height: 7px; border-radius: 2px; background: var(--green); }
+    .legend .reply { background: #e19b72; }
+    .trend { display: grid; gap: 9px; }
+    .trend-row { display: grid; grid-template-columns: 43px minmax(0, 1fr) 60px; align-items: center; gap: 10px; color: var(--muted); font-size: 10px; }
+    .trend-bars { display: grid; gap: 3px; }
+    .bar-track { height: 7px; overflow: hidden; border-radius: 8px; background: #edf1ef; }
+    .bar { height: 100%; min-width: 2px; border-radius: inherit; background: var(--green); transition: width .3s ease; }
+    .bar.reply { background: #e19b72; }
+    .trend-count { text-align: right; font-variant-numeric: tabular-nums; }
+    .sales-total { padding: 15px 0 14px; border-bottom: 1px solid var(--line); }
+    .sales-total small { display: block; color: var(--muted); font-size: 11px; }
+    .sales-total strong { display: block; margin-top: 3px; font: 800 25px Manrope, sans-serif; }
+    .sales-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; padding-top: 13px; }
+    .sales-meta small { display: block; color: var(--muted); font-size: 11px; }
+    .sales-meta strong { display: block; margin-top: 3px; font: 700 17px Manrope, sans-serif; }
+    .two-col { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(270px, .8fr); gap: 15px; }
+    .table-panel { padding: 0; overflow: hidden; }
+    .table-panel .panel-head { padding: 18px 19px 0; }
+    .table-wrap { width: 100%; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
+    th { padding: 10px 15px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: #fafcfb; color: #85918b; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+    td { padding: 12px 15px; border-bottom: 1px solid #edf1ee; color: #43534c; font-size: 12px; }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr:hover { background: #fbfdfb; }
+    .customer-link { padding: 0; border: 0; background: none; color: var(--ink); text-align: left; font-weight: 700; }
+    .customer-link:hover { color: var(--green); text-decoration: underline; }
+    .muted { color: var(--muted); }
+    .currency { font-variant-numeric: tabular-nums; }
+    .pill { display: inline-flex; padding: 3px 8px; border-radius: 20px; background: var(--green-soft); color: var(--green); font-size: 10px; font-weight: 700; }
+    .pill.pending { background: var(--gold-soft); color: var(--gold); }
+    .pill.cancelled { background: var(--coral-soft); color: var(--coral); }
+    .empty { padding: 27px 18px; color: var(--muted); text-align: center; font-size: 12px; }
+    .section-head { display: flex; justify-content: space-between; align-items: end; gap: 15px; margin-bottom: 15px; }
+    .search { width: min(100%, 310px); height: 39px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; background: white; color: var(--ink); }
+    .search:focus, .select:focus, .login-input:focus { outline: 2px solid #b1d4c6; border-color: var(--green); }
+    .pagination { display: flex; justify-content: flex-end; align-items: center; gap: 9px; padding: 13px 17px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .small-button { width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 5px; background: white; color: var(--ink); }
+    .quality-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; margin-bottom: 15px; }
+    .quality-number { margin-top: 13px; font: 800 27px Manrope, sans-serif; }
+    .quality-copy { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+    .notice { display: flex; justify-content: space-between; align-items: center; gap: 15px; padding: 15px 17px; border: 1px solid #eedfbe; border-radius: 7px; background: #fffaf0; color: #7d6335; font-size: 12px; }
+    .notice strong { display: block; margin-bottom: 2px; color: #664d20; }
+    .state { padding: 30px; color: var(--muted); text-align: center; }
+    .toast { position: fixed; right: 20px; bottom: 20px; z-index: 5; max-width: min(390px, calc(100vw - 40px)); padding: 12px 16px; border-radius: 6px; background: var(--ink); color: white; box-shadow: var(--shadow); }
+    .login-screen { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 22px; background: radial-gradient(ellipse at 85% 10%, rgba(33, 125, 96, .12), transparent 36%), var(--canvas); }
+    .login-box { width: min(100%, 390px); padding: 30px; border: 1px solid var(--line); border-radius: 9px; background: white; box-shadow: var(--shadow); }
+    .login-box h1 { margin: 20px 0 5px; font-size: 23px; }
+    .login-box p { color: var(--muted); }
+    .login-input { width: 100%; height: 43px; margin: 7px 0 12px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; }
+    .login-box .button { width: 100%; }
+    .login-error { min-height: 20px; margin: 9px 0 0 !important; color: #b54d37 !important; font-size: 12px; }
+    .drawer-backdrop { position: fixed; inset: 0; z-index: 6; display: none; justify-content: flex-end; background: rgba(20, 38, 32, .32); }
+    .drawer-backdrop.open { display: flex; }
+    .drawer { width: min(100%, 510px); height: 100%; overflow-y: auto; padding: 23px; background: var(--canvas); box-shadow: -12px 0 35px rgba(0,0,0,.1); }
+    .drawer-head { display: flex; justify-content: space-between; gap: 12px; }
+    .drawer-close { width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 6px; background: white; }
+    .drawer-section { margin-top: 14px; padding: 17px; border: 1px solid var(--line); border-radius: 7px; background: white; }
+    .message { margin: 10px 0; padding: 10px 12px; border-radius: 6px; background: #f3f6f4; color: #43534c; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .message.ai { margin-left: 20px; background: var(--green-soft); }
+    [hidden] { display: none !important; }
+    @media (max-width: 1050px) {
+      .app { grid-template-columns: 205px minmax(0, 1fr); }
+      .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .overview-grid, .two-col { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 680px) {
+      .app { display: block; padding-bottom: 66px; }
+      .sidebar { position: fixed; inset: auto 0 0; z-index: 4; width: 100%; height: 61px; padding: 0 8px; border-top: 1px solid var(--line); border-right: 0; }
+      .brand, .nav-label, .sidebar-bottom { display: none; }
+      .nav { height: 100%; grid-template-columns: repeat(4, 1fr); align-items: stretch; gap: 2px; }
+      .nav button { flex-direction: column; justify-content: center; gap: 1px; padding: 4px 2px; border-radius: 5px; font-size: 10px; }
+      .nav-symbol { font-size: 15px; }
+      .main { padding: 20px 14px 26px; }
+      .topbar { align-items: flex-start; margin-bottom: 20px; }
+      .top-actions { flex-wrap: wrap; justify-content: flex-end; }
+      .top-actions .select { max-width: 125px; }
+      .settings-link { display: none; }
+      .kpis { gap: 9px; }
+      .kpi { min-height: 123px; padding: 13px; }
+      .kpi-value { font-size: 23px; }
+      .panel { padding: 15px; }
+      .table-panel { padding: 0; }
+      .quality-grid { grid-template-columns: 1fr; }
+      .section-head { align-items: flex-start; flex-direction: column; }
+      .search { width: 100%; }
+      .notice { align-items: flex-start; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app" id="app" hidden>
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark">SG</div><div><div class="brand-name">STORE SG</div><div class="brand-sub">CRM · MEDELLÍN</div></div></div>
+      <div class="nav-label">Operación</div>
+      <nav class="nav" aria-label="Secciones del CRM">
+        <button class="active" data-view="overview"><span class="nav-symbol">◫</span>Resumen</button>
+        <button data-view="customers"><span class="nav-symbol">◎</span>Clientes</button>
+        <button data-view="orders"><span class="nav-symbol">▤</span>Pedidos</button>
+        <button data-view="quality"><span class="nav-symbol">↗</span>Calidad IA</button>
+      </nav>
+      <div class="sidebar-bottom"><div class="store-status"><span class="pulse"></span><span>Panel conectado</span></div><div class="sidebar-links"><a href="/settings">Canales</a><button id="logout">Cerrar sesión</button></div></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><p class="eyebrow">STORE SG · MEDELLÍN</p><h1 id="view-title">Resumen</h1><p class="subhead" id="view-subtitle">Actividad de WhatsApp, ventas y atención del equipo.</p></div>
+        <div class="top-actions"><select class="select" id="period" aria-label="Periodo de análisis"><option value="7">Últimos 7 días</option><option value="30" selected>Últimos 30 días</option><option value="90">Últimos 90 días</option></select><button class="button" id="refresh">Actualizar</button><a class="button settings-link" href="/settings">Canales</a></div>
+      </header>
+
+      <section class="view active" id="view-overview">
+        <div class="kpis" id="overview-kpis"></div>
+        <div class="overview-grid">
+          <section class="panel"><div class="panel-head"><div><h2 class="panel-title">Actividad del periodo</h2><p class="panel-note">Entrantes y respuestas · agrupado en hasta 14 intervalos</p></div><div class="legend"><span><i></i>Entrantes</span><span><i class="reply"></i>Respuestas</span></div></div><div class="trend" id="trend"></div></section>
+          <section class="panel"><div class="panel-head"><div><h2 class="panel-title">Ventas del periodo</h2><p class="panel-note">Pedidos asociados a clientes atendidos</p></div></div><div id="sales-panel"></div></section>
+        </div>
+        <div class="two-col">
+          <section class="panel table-panel"><div class="panel-head"><div><h2 class="panel-title">Clientes recientes</h2><p class="panel-note">Últimas personas que escribieron por WhatsApp</p></div><button class="button" data-go="customers">Ver clientes</button></div><div class="table-wrap" id="recent-customers"></div></section>
+          <section class="panel"><div class="panel-head"><div><h2 class="panel-title">Calidad del asistente</h2><p class="panel-note">Medición de respuestas registradas</p></div></div><div id="quality-glance"></div></section>
+        </div>
+        <div class="notice" style="margin-top:15px"><div><strong>Seguimiento de carritos</strong><span id="cart-note">Comprobando disponibilidad de datos...</span></div><button class="button" data-go="orders">Ver pedidos</button></div>
+      </section>
+
+      <section class="view" id="view-customers">
+        <div class="section-head"><div><h2 class="panel-title">Directorio de clientes</h2><p class="panel-note">Personas identificadas por su número de WhatsApp, pedidos y gasto acumulado.</p></div><input class="search" id="customer-search" type="search" placeholder="Buscar nombre o teléfono" autocomplete="off"></div>
+        <section class="panel table-panel"><div class="table-wrap" id="customers-table"></div><div class="pagination" id="customer-pagination"></div></section>
+      </section>
+
+      <section class="view" id="view-orders">
+        <div class="section-head"><div><h2 class="panel-title">Pedidos</h2><p class="panel-note">Ventas sincronizadas con Shopify o registradas en el CRM.</p></div></div>
+        <section class="panel table-panel"><div class="table-wrap" id="orders-table"></div></section>
+      </section>
+
+      <section class="view" id="view-quality">
+        <div class="quality-grid" id="quality-cards"></div>
+        <section class="panel"><div class="panel-head"><div><h2 class="panel-title">Lectura de calidad</h2><p class="panel-note">La confianza se recopila en las respuestas nuevas del asistente.</p></div></div><div id="quality-detail"></div></section>
+        <div class="notice" style="margin-top:15px"><div><strong>Histórico disponible</strong><span>Las conversaciones anteriores al registro de intención y confianza no incluyen estos indicadores.</span></div></div>
+      </section>
+      <div class="state" id="loading" hidden>Cargando información del CRM...</div>
+    </main>
+  </div>
+
+  <section class="login-screen" id="login-screen">
+    <form class="login-box" id="login-form">
+      <div class="brand-mark">SG</div><h1>Acceso al CRM</h1><p>Ingresa la contraseña privada del panel para continuar.</p>
+      <label for="dashboard-password">Contraseña del panel</label><input class="login-input" id="dashboard-password" type="password" autocomplete="current-password" required>
+      <button class="button button-primary" type="submit">Ingresar</button><p class="login-error" id="login-error" role="status"></p>
+    </form>
+  </section>
+
+  <div class="drawer-backdrop" id="customer-drawer" role="dialog" aria-modal="true" aria-label="Perfil de cliente"><aside class="drawer"><div class="drawer-head"><div><p class="eyebrow">PERFIL DE CLIENTE</p><h2 class="panel-title" id="drawer-name"></h2><p class="panel-note" id="drawer-phone"></p></div><button class="drawer-close" id="drawer-close" aria-label="Cerrar perfil">×</button></div><div id="drawer-content"></div></aside></div>
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <script>
+    const $ = selector => document.querySelector(selector);
+    const tokenKey = 'storesg_crm_dashboard_token';
+    let token = sessionStorage.getItem(tokenKey) || '';
+    let currentPage = 1;
+    let searchTimer;
+    let summary;
+    const formatNumber = value => new Intl.NumberFormat('es-CO').format(Number(value || 0));
+    const formatMoney = value => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(Number(value || 0));
+    const formatDate = value => value ? new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(String(value).replace(' ', 'T'))) : 'Sin actividad';
+    const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+
+    async function api(path, options = {}) {
+      const response = await fetch('/api/crm/dashboard' + path, {
+        ...options,
+        headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: 'Bearer ' + token } : {}), ...options.headers }
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401 && token) { logout(); throw new Error('La sesión expiró. Ingresa de nuevo.'); }
+      if (!response.ok) throw new Error(data.error || 'No se pudo completar la solicitud.');
+      return data;
+    }
+
+    function showToast(message) {
+      const toast = $('#toast');
+      toast.textContent = message;
+      toast.hidden = false;
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => { toast.hidden = true; }, 3500);
+    }
+
+    function setAuthenticated(isAuthenticated) {
+      $('#app').hidden = !isAuthenticated;
+      $('#login-screen').hidden = isAuthenticated;
+    }
+
+    function logout() {
+      token = '';
+      sessionStorage.removeItem(tokenKey);
+      setAuthenticated(false);
+    }
+
+    async function login(event) {
+      event.preventDefault();
+      const button = $('#login-form button');
+      button.disabled = true;
+      $('#login-error').textContent = '';
+      try {
+        const result = await api('/login', { method: 'POST', body: JSON.stringify({ password: $('#dashboard-password').value }) });
+        token = result.token;
+        sessionStorage.setItem(tokenKey, token);
+        $('#dashboard-password').value = '';
+        setAuthenticated(true);
+        await loadDashboard();
+      } catch (error) {
+        $('#login-error').textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    function kpi(label, value, detail, symbol, tone = '') {
+      return `<article class="kpi"><div class="kpi-head"><span>${label}</span><span class="kpi-mark ${tone}">${symbol}</span></div><div class="kpi-value">${value}</div><div class="kpi-foot">${detail}</div></article>`;
+    }
+
+    function renderOverview() {
+      const a = summary.activity;
+      const s = summary.sales;
+      $('#overview-kpis').innerHTML = [
+        kpi('Personas atendidas', formatNumber(a.people), `${formatNumber(a.newCustomers)} nuevos en el periodo`, 'P'),
+        kpi('Mensajes recibidos', formatNumber(a.inbound), `${formatNumber(a.messages)} mensajes en total`, 'M', 'coral'),
+        kpi('Pedidos', formatNumber(s.orders), `${formatNumber(s.paidOrders)} pagados`, 'V', 'gold'),
+        kpi('Ventas registradas', formatMoney(s.revenue), `${s.conversionRate}% de conversión por cliente`, '$')
+      ].join('');
+
+      const days = Number($('#period').value);
+      const dateMap = new Map(summary.trend.map(row => [String(row.day).slice(0, 10), row]));
+      const end = new Date();
+      const count = Math.min(days, 14);
+      const trendRows = Array.from({ length: count }, () => ({ day: null, inbound: 0, replies: 0 }));
+      for (let offset = days - 1; offset >= 0; offset--) {
+        const day = new Date(end);
+        day.setDate(end.getDate() - offset);
+        const key = day.toISOString().slice(0, 10);
+        const row = dateMap.get(key) || { inbound: 0, replies: 0 };
+        const bucket = trendRows[Math.min(count - 1, Math.floor((days - 1 - offset) * count / days))];
+        bucket.day = day;
+        bucket.inbound += Number(row.inbound);
+        bucket.replies += Number(row.replies);
+      }
+      const maximum = Math.max(1, ...trendRows.flatMap(row => [row.inbound, row.replies]));
+      $('#trend').innerHTML = trendRows.map(row => `<div class="trend-row"><span>${new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short' }).format(row.day)}</span><div class="trend-bars"><div class="bar-track"><div class="bar" style="width:${Math.max(row.inbound ? 2 : 0, row.inbound / maximum * 100)}%"></div></div><div class="bar-track"><div class="bar reply" style="width:${Math.max(row.replies ? 2 : 0, row.replies / maximum * 100)}%"></div></div></div><span class="trend-count">${row.inbound} / ${row.replies}</span></div>`).join('');
+      $('#sales-panel').innerHTML = `<div class="sales-total"><small>Ingresos registrados</small><strong>${formatMoney(s.revenue)}</strong></div><div class="sales-meta"><div><small>Compradores</small><strong>${formatNumber(s.buyers)}</strong></div><div><small>Conversión</small><strong>${s.conversionRate}%</strong></div><div><small>Pedidos pagados</small><strong>${formatNumber(s.paidOrders)}</strong></div><div><small>Pedidos totales</small><strong>${formatNumber(s.orders)}</strong></div></div>`;
+
+      const q = summary.quality;
+      const score = q.averageConfidence === null ? '—' : Math.round(q.averageConfidence * 100) + '%';
+      $('#quality-glance').innerHTML = `<div class="sales-total"><small>Confianza promedio</small><strong>${score}</strong></div><div class="sales-meta"><div><small>Respuestas evaluadas</small><strong>${formatNumber(q.measuredReplies)}</strong></div><div><small>Confianza baja</small><strong>${formatNumber(q.lowConfidenceReplies)}</strong></div></div><p class="panel-note" style="margin-top:13px">${q.measuredReplies ? 'Indicador disponible para respuestas registradas desde la actualización.' : 'Aún no hay respuestas nuevas con medición de confianza.'}</p>`;
+      $('#cart-note').textContent = summary.abandonedCarts.tracked ? `${formatNumber(summary.abandonedCarts.recorded)} registrados · ${formatNumber(summary.abandonedCarts.recovered)} recuperados · ${formatMoney(summary.abandonedCarts.recoveredValue)}` : 'El CRM aún no está sincronizando checkouts abandonados de Shopify.';
+    }
+
+    function customerTable(customers, compact = false) {
+      if (!customers.length) return '<div class="empty">No hay clientes para mostrar en este periodo.</div>';
+      return `<table><thead><tr><th>Cliente</th><th>WhatsApp</th>${compact ? '<th>Último mensaje</th>' : '<th>Mensajes</th><th>Pedidos</th><th>Gasto</th><th>Último contacto</th>'}</tr></thead><tbody>${customers.map(customer => `<tr><td><button class="customer-link" data-customer="${escapeHtml(customer.id)}">${escapeHtml(customer.name || 'Cliente')}</button></td><td>${escapeHtml(customer.phone || '—')}</td>${compact ? `<td>${escapeHtml(formatDate(customer.last_contact_at))}</td>` : `<td>${formatNumber(customer.inbound_messages)}</td><td>${formatNumber(customer.total_orders)}</td><td class="currency">${formatMoney(customer.total_spent)}</td><td>${escapeHtml(formatDate(customer.last_contact_at))}</td>`}</tr>`).join('')}</tbody></table>`;
+    }
+
+    async function loadRecentCustomers() {
+      const result = await api('/customers?limit=6');
+      $('#recent-customers').innerHTML = customerTable(result.customers, true);
+    }
+
+    async function loadCustomers() {
+      const params = new URLSearchParams({ page: String(currentPage), limit: '25', search: $('#customer-search').value });
+      const result = await api('/customers?' + params);
+      $('#customers-table').innerHTML = customerTable(result.customers);
+      $('#customer-pagination').innerHTML = `<span>${formatNumber(result.total)} clientes · Página ${result.page} de ${Math.max(1, result.pages)}</span><button class="small-button" data-page="${Math.max(1, result.page - 1)}" aria-label="Página anterior" ${result.page <= 1 ? 'disabled' : ''}>‹</button><button class="small-button" data-page="${Math.min(result.pages || 1, result.page + 1)}" aria-label="Página siguiente" ${result.page >= result.pages ? 'disabled' : ''}>›</button>`;
+    }
+
+    function statusPill(status) {
+      const value = String(status || 'pendiente').toLowerCase();
+      const tone = /cancel|refun|failed/.test(value) ? 'cancelled' : /pending|unpaid|pendiente/.test(value) ? 'pending' : '';
+      return `<span class="pill ${tone}">${escapeHtml(value.replaceAll('_', ' '))}</span>`;
+    }
+
+    function orderTable(orders) {
+      if (!orders.length) return '<div class="empty">No hay pedidos registrados.</div>';
+      return `<table><thead><tr><th>Pedido</th><th>Cliente</th><th>Estado</th><th>Pago</th><th>Total</th><th>Fecha</th></tr></thead><tbody>${orders.map(order => `<tr><td><strong>${escapeHtml(order.order_number || '—')}</strong></td><td>${escapeHtml(order.customer_name || 'Cliente')}<div class="muted">${escapeHtml(order.customer_phone || '')}</div></td><td>${statusPill(order.status)}</td><td>${statusPill(order.payment_status)}</td><td class="currency">${formatMoney(order.total)}</td><td>${escapeHtml(formatDate(order.created_at))}</td></tr>`).join('')}</tbody></table>`;
+    }
+
+    async function loadOrders() {
+      const result = await api('/orders?limit=50');
+      $('#orders-table').innerHTML = orderTable(result.orders);
+    }
+
+    function renderQuality() {
+      const q = summary.quality;
+      const confidence = q.averageConfidence === null ? 'Sin datos' : Math.round(q.averageConfidence * 100) + '%';
+      $('#quality-cards').innerHTML = [
+        kpi('Confianza promedio', confidence, 'En respuestas de IA evaluadas', 'C'),
+        kpi('Respuestas evaluadas', formatNumber(q.measuredReplies), 'Desde el registro de métricas', 'R', 'coral'),
+        kpi('Confianza baja', formatNumber(q.lowConfidenceReplies), 'Respuestas con score menor a 60%', '!', 'gold')
+      ].join('');
+      $('#quality-detail').innerHTML = q.measuredReplies ? `<div class="sales-meta"><div><small>Respuestas con confianza alta</small><strong>${formatNumber(q.measuredReplies - q.lowConfidenceReplies)}</strong></div><div><small>Respuestas que conviene revisar</small><strong>${formatNumber(q.lowConfidenceReplies)}</strong></div></div><p class="panel-note" style="margin-top:14px">La confianza refleja la señal interna del agente, no reemplaza la revisión de conversaciones ni una encuesta de satisfacción.</p>` : '<div class="empty">Todavía no hay respuestas evaluadas. El panel empezará a medir las nuevas interacciones a partir de ahora.</div>';
+    }
+
+    async function openCustomer(id) {
+      const drawer = $('#customer-drawer');
+      drawer.classList.add('open');
+      $('#drawer-content').innerHTML = '<div class="state">Cargando perfil...</div>';
+      try {
+        const result = await api('/customers/' + encodeURIComponent(id));
+        $('#drawer-name').textContent = result.customer.name || 'Cliente';
+        $('#drawer-phone').textContent = [result.customer.phone, result.customer.email, result.customer.city].filter(Boolean).join(' · ');
+        const messages = result.messages.length ? result.messages.map(message => `<div class="message ${message.sender_type === 'ai' ? 'ai' : ''}"><strong>${message.sender_type === 'ai' ? 'Asistente' : 'Cliente'} · ${escapeHtml(formatDate(message.created_at))}</strong><br>${escapeHtml(message.content)}</div>`).join('') : '<div class="empty">Aún no hay mensajes guardados.</div>';
+        const orders = result.orders.length ? orderTable(result.orders.map(order => ({ ...order, customer_name: result.customer.name, customer_phone: result.customer.phone }))) : '<div class="empty">Sin pedidos registrados.</div>';
+        $('#drawer-content').innerHTML = `<section class="drawer-section"><h3 class="panel-title">Conversación reciente</h3>${messages}</section><section class="drawer-section"><h3 class="panel-title">Pedidos</h3>${orders}</section>`;
+      } catch (error) { $('#drawer-content').innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`; }
+    }
+
+    async function loadDashboard() {
+      $('#loading').hidden = false;
+      try {
+        summary = await api('/summary?days=' + $('#period').value);
+        renderOverview();
+        renderQuality();
+        await loadRecentCustomers();
+        const active = document.querySelector('.nav button.active')?.dataset.view || 'overview';
+        if (active === 'customers') await loadCustomers();
+        if (active === 'orders') await loadOrders();
+      } catch (error) {
+        showToast(error.message);
+        if (!token) return;
+      } finally { $('#loading').hidden = true; }
+    }
+
+    function changeView(name) {
+      document.querySelectorAll('.nav button').forEach(button => button.classList.toggle('active', button.dataset.view === name));
+      document.querySelectorAll('.view').forEach(view => view.classList.toggle('active', view.id === 'view-' + name));
+      const titles = { overview: ['Resumen', 'Actividad de WhatsApp, ventas y atención del equipo.'], customers: ['Clientes', 'Historial de atención y valor de cada relación.'], orders: ['Pedidos', 'Seguimiento de compras registradas y pagos.'], quality: ['Calidad IA', 'Señales de confianza para revisar el desempeño del asistente.'] };
+      $('#view-title').textContent = titles[name][0];
+      $('#view-subtitle').textContent = titles[name][1];
+      if (name === 'customers') loadCustomers().catch(error => showToast(error.message));
+      if (name === 'orders') loadOrders().catch(error => showToast(error.message));
+    }
+
+    $('#login-form').addEventListener('submit', login);
+    $('#logout').addEventListener('click', logout);
+    $('#refresh').addEventListener('click', () => loadDashboard());
+    $('#period').addEventListener('change', () => loadDashboard());
+    $('#customer-search').addEventListener('input', () => { clearTimeout(searchTimer); currentPage = 1; searchTimer = setTimeout(() => loadCustomers().catch(error => showToast(error.message)), 250); });
+    document.addEventListener('click', event => {
+      const viewButton = event.target.closest('[data-view]');
+      if (viewButton) changeView(viewButton.dataset.view);
+      const goButton = event.target.closest('[data-go]');
+      if (goButton) changeView(goButton.dataset.go);
+      const customerButton = event.target.closest('[data-customer]');
+      if (customerButton) openCustomer(customerButton.dataset.customer);
+      const pageButton = event.target.closest('[data-page]');
+      if (pageButton && !pageButton.disabled) { currentPage = Number(pageButton.dataset.page); loadCustomers().catch(error => showToast(error.message)); }
+    });
+    $('#drawer-close').addEventListener('click', () => $('#customer-drawer').classList.remove('open'));
+    $('#customer-drawer').addEventListener('click', event => { if (event.target.id === 'customer-drawer') event.currentTarget.classList.remove('open'); });
+
+    if (token) {
+      setAuthenticated(true);
+      loadDashboard();
+    } else setAuthenticated(false);
+  </script>
+</body>
+</html>
