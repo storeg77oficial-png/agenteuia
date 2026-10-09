@@ -117,6 +117,22 @@ async function handleMessage(tenant, value, message) {
   }
 
   const session = (await getSession(message.from)) || { state: 'new', context: {}, messageCount: 0 };
+  try {
+    const history = await query(
+      'SELECT direction, content FROM messages WHERE tenant_id = $1 AND customer_id = $2 ORDER BY created_at DESC LIMIT 12',
+      [tenant.id, customer.id]
+    );
+    session.context = {
+      ...session.context,
+      history: history.rows.reverse().map(row => ({
+        role: row.direction === 'inbound' ? 'user' : 'assistant',
+        content: row.content
+      }))
+    };
+  } catch (error) {
+    logger.warn('Could not load customer conversation history', { error: error.message });
+  }
+
   const aiResponse = await processWithAI(tenant, customer, session, text, message.type, incoming.extras);
   const reply = aiResponse.text || '¿En qué te puedo ayudar?';
 
@@ -142,7 +158,7 @@ async function handleMessage(tenant, value, message) {
   }
 
   try {
-    const sql = 'INSERT INTO messages (tenant_id, customer_id, direction, sender_type, content, content_type, ai_intent, ai_model, ai_confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)';
+    const sql = 'INSERT INTO messages (tenant_id, customer_id, direction, sender_type, content, content_type, ai_intent, ai_model, ai_confidence) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)';
     await query(sql, [tenant.id, customer.id, 'inbound', 'customer', incoming.stored, message.type || 'text', null, null, null]);
     await query(sql, [tenant.id, customer.id, 'outbound', 'ai', reply, 'text', aiResponse.intent || null, process.env.AI_MODEL || null, Number.isFinite(aiResponse.confidence) ? aiResponse.confidence : null]);
 
