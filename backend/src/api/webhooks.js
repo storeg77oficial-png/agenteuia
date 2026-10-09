@@ -41,7 +41,7 @@ function hasValidSignature(req) {
 
 async function findTenant(phoneNumberId) {
   let result = await query(
-    'SELECT * FROM tenants WHERE whatsapp_phone_number_id = ?',
+    'SELECT * FROM tenants WHERE whatsapp_phone_number_id = $1',
     [phoneNumberId]
   );
   if (result.rows[0]) return result.rows[0];
