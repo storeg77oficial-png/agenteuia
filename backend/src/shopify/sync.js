@@ -3,7 +3,7 @@
  * Stores one row per variant with its own size/color/stock.
  */
 const axios = require('axios');
-const { query } = require('../db');
+const { query, isLocal } = require('../db');
 const { logger } = require('../utils/logger');
 
 const SIZE_RE = /^(xxs|xs|s|m|l|xl|xxl|2xl|3xl|4xl|\d{2}(?:[.,]5)?|unica|unico|única|único)$/i;
@@ -108,6 +108,11 @@ function stockOf(variant) {
 async function upsertVariant(tenantId, product, variant) {
   const { size, color } = splitOptions(product, variant);
   const qty = stockOf(variant);
+  const sizes = size ? [size] : [];
+  const colors = color ? [color] : [];
+  const tags = product.tags ? product.tags.split(', ').filter(Boolean) : [];
+  const inStock = qty > 0;
+  const requiresShipping = Boolean(variant.requires_shipping);
   const values = {
     title: product.title,
     description: product.body_html ? product.body_html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 500) : '',
@@ -118,14 +123,14 @@ async function upsertVariant(tenantId, product, variant) {
     compare_at_price: variant.compare_at_price ? parseFloat(variant.compare_at_price) : null,
     sku: variant.sku || null,
     stock_quantity: qty,
-    in_stock: qty > 0 ? 1 : 0,
-    sizes: JSON.stringify(size ? [size] : []),
-    colors: JSON.stringify(color ? [color] : []),
+    in_stock: isLocal ? Number(inStock) : inStock,
+    sizes: isLocal ? JSON.stringify(sizes) : sizes,
+    colors: isLocal ? JSON.stringify(colors) : colors,
     images: JSON.stringify((product.images || []).slice(0, 3).map(i => ({ url: i.src, alt: i.alt }))),
-    tags: JSON.stringify(product.tags ? product.tags.split(', ').filter(Boolean) : []),
+    tags: isLocal ? JSON.stringify(tags) : tags,
     weight: variant.weight || null,
-    available_for_sale: qty > 0 ? 1 : 0,
-    requires_shipping: variant.requires_shipping ? 1 : 0,
+    available_for_sale: isLocal ? Number(inStock) : inStock,
+    requires_shipping: isLocal ? Number(requiresShipping) : requiresShipping,
     handle: product.handle || null
   };
   const cols = Object.keys(values);
@@ -217,9 +222,10 @@ async function refreshProductsLive(tenant, shopifyProductIds) {
       if (!row) continue;
       const price = parseFloat(variant.price);
       if (row.stock_quantity !== qty || row.price !== price) {
+        const inStock = qty > 0;
         await query(
           'UPDATE products SET stock_quantity = $1, in_stock = $2, available_for_sale = $3, price = $4, last_synced_at = NOW() WHERE tenant_id = $5 AND shopify_variant_id = $6',
-          [qty, qty > 0 ? 1 : 0, qty > 0 ? 1 : 0, price, tenant.id, variant.id]
+          [qty, isLocal ? Number(inStock) : inStock, isLocal ? Number(inStock) : inStock, price, tenant.id, variant.id]
         );
         changed = true;
       }
