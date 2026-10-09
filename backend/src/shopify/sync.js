@@ -181,8 +181,8 @@ async function syncCatalog(tenant) {
 
     // Anything not seen in this sync was removed or unpublished in Shopify
     await query(
-      'UPDATE products SET in_stock = 0, available_for_sale = 0, stock_quantity = 0 WHERE tenant_id = $1 AND (last_synced_at IS NULL OR last_synced_at < $2)',
-      [tenant.id, startedAt]
+      'UPDATE products SET in_stock = $1, available_for_sale = $1, stock_quantity = $2 WHERE tenant_id = $3 AND (last_synced_at IS NULL OR last_synced_at < $4)',
+      [isLocal ? 0 : false, 0, tenant.id, startedAt]
     );
 
     require('../ai/catalog').invalidateKnowledge();
