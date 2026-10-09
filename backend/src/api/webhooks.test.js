@@ -44,7 +44,9 @@ describe('Meta WhatsApp webhook', () => {
     jest.clearAllMocks();
     process.env.WHATSAPP_APP_SECRET = 'test-app-secret';
     process.env.WHATSAPP_PHONE_NUMBER_ID = tenant.whatsapp_phone_number_id;
-    query.mockResolvedValue({ rows: [tenant] });
+    query.mockImplementation(async sql => sql.includes('SELECT direction, content FROM messages')
+      ? { rows: [] }
+      : { rows: [tenant] });
     findCustomer.mockResolvedValue(customer);
     getSession.mockResolvedValue(null);
     setSession.mockResolvedValue(undefined);
@@ -97,7 +99,47 @@ describe('Meta WhatsApp webhook', () => {
     expect(sendMessage).toHaveBeenNthCalledWith(2, tenant, from, 'Respuesta: horarios');
     const messageInserts = query.mock.calls.filter(([sql]) => sql.includes('INSERT INTO messages'));
     expect(messageInserts).toHaveLength(4);
+    expect(messageInserts[0][0]).toContain('VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)');
     expect(messageInserts[0][1][5]).toBe('text');
     expect(messageInserts[1][1]).toEqual(expect.arrayContaining(['greeting', 0.9]));
+  });
+
+  test('restores recent customer messages from PostgreSQL for the AI session', async () => {
+    const from = '573001234567';
+    query.mockImplementation(async sql => {
+      if (sql.includes('SELECT direction, content FROM messages')) {
+        return { rows: [
+          { direction: 'outbound', content: 'Te mostré unos tenis Nike.' },
+          { direction: 'inbound', content: 'Me gustaron, pero no en blanco.' }
+        ] };
+      }
+      if (sql.includes('INSERT INTO messages')) return { rows: [], rowCount: 1 };
+      return { rows: [tenant] };
+    });
+
+    const payload = {
+      object: 'whatsapp_business_account',
+      entry: [{ changes: [{ value: {
+        metadata: { phone_number_id: tenant.whatsapp_phone_number_id },
+        contacts: [{ wa_id: from, profile: { name: 'Ana' } }],
+        messages: [{ id: 'wamid.in.history', from, type: 'text', text: { body: 'Muéstrame otra opción' } }]
+      } }] }]
+    };
+
+    const response = await signedRequest(payload);
+    await new Promise(resolve => setImmediate(resolve));
+
+    expect(response.status).toBe(200);
+    expect(processWithAI).toHaveBeenCalledWith(
+      tenant,
+      customer,
+      expect.objectContaining({ context: { history: [
+        { role: 'assistant', content: 'Te mostré unos tenis Nike.' },
+        { role: 'user', content: 'Me gustaron, pero no en blanco.' }
+      ] } }),
+      'Muéstrame otra opción',
+      'text',
+      {}
+    );
   });
 });
