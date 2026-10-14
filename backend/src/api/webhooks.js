@@ -147,6 +147,13 @@ async function handleMessage(tenant, value, message) {
     }
   }
   if (!sentAsVoice) await sendMessage(tenant, message.from, reply);
+  else if (aiResponse.catalogUrl) {
+    try {
+      await sendMessage(tenant, message.from, `Te comparto el catálogo: ${aiResponse.catalogUrl}`);
+    } catch (error) {
+      logger.warn('Failed to send catalog link after voice reply', { error: error.message });
+    }
+  }
 
   // Product photos are best-effort: a failed image must not break the conversation
   for (const image of aiResponse.images || []) {

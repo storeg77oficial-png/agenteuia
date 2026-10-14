@@ -12,6 +12,19 @@ const BRAND_ALIASES = {
   'michael kors': 'michael kors', mk: 'michael kors', 'palm angels': 'palm angels'
 };
 
+const QUALITY_TYPES = ['original', 'premium', 'turca', 'aaa'];
+const QUALITY_PATTERNS = [
+  ['original', /\boriginal(?:es)?\b/g],
+  ['premium', /\bpremium\b/g],
+  ['turca', /\bturc[oa]s?\b/g],
+  ['aaa', /\baaa\b/g]
+];
+const GENDER_PATTERNS = [
+  ['hombre', /\b(?:hombre|hombres|masculino|masculina)\b/g],
+  ['mujer', /\b(?:mujer|mujeres|femenino|femenina)\b/g],
+  ['ninos', /\b(?:nino|nina|ninos|ninas|infantil)\b/g]
+];
+
 const {
   normalizeSlang, FILLER_WORDS, COLOR_ALIASES, CATEGORY_SYNONYMS, MULTI_CATEGORY_WORDS
 } = require('./colombian');
@@ -25,7 +38,7 @@ const STOPWORDS = new Set(('de la el los las un una unos unas que tienen tiene t
   'quisiera quería queria podrias puedes pueden dame dime saber si no al del lo le se es son ya aun todavia ' +
   'barato barata baratos baratas economico economica nuevo nueva nuevos nuevas otra otro otros otras ' +
   'gracias ok vale claro comprar comprarlo comprarla compro pedir ordenar separar separame apartar llevar llevo ' +
-  'cual cuales precio tienes disponibilidad ' + FILLER_WORDS.join(' ')).split(' '));
+  'cual cuales precio tienes disponibilidad todas toda marca marcas preferencia mejor calidad calidades ' + FILLER_WORDS.join(' ')).split(' '));
 
 function norm(s) {
   return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -74,6 +87,7 @@ async function loadKnowledge(tenantId, force = false) {
         title: row.title,
         brand: row.brand && row.brand !== 'Sin marca' ? row.brand : null,
         category: classify(row.title, row.category),
+        subcategory: row.subcategory || '',
         description: row.description || '',
         tags: parseJson(row.tags, []),
         image: images[0]?.url || null,
@@ -105,6 +119,8 @@ async function loadKnowledge(tenantId, force = false) {
     product.colors = [...new Set(live.map(v => v.color).filter(Boolean))];
     product.haystack = norm([product.title, product.brand, product.category, product.tags.join(' '), product.description].join(' '));
     product.titleNorm = norm(`${product.title} ${product.brand || ''} ${product.category || ''}`);
+    product.searchText = norm([product.title, product.brand, product.category, product.subcategory,
+      product.tags.join(' '), product.description].join(' '));
     products.push(product);
 
     if (product.brand) {
@@ -173,7 +189,10 @@ function parsePrice(msg) {
 /** Turn a free-text message into structured filters using what the store really sells. */
 function parseQuery(knowledge, message) {
   let text = ` ${normalizeSlang(message)} `;
-  const parsed = { brands: [], categories: [], sizes: [], colors: [], terms: [], min: null, max: null };
+  const parsed = {
+    brands: [], categories: [], sizes: [], colors: [], qualities: [], genders: [], terms: [],
+    allBrands: false, min: null, max: null
+  };
 
   const price = parsePrice(text.trim());
   parsed.min = price.min || null;
@@ -193,7 +212,31 @@ function parseQuery(knowledge, message) {
     }
   }
 
-  const sizeMatch = text.match(/\b(?:talla|size|en talla|tla)\s+(xxs|xs|s|m|l|xl|xxl|2xl|3xl|4xl|\d{2}(?:\s?5)?)\b/);
+  parsed.allBrands = /\b(?:todas?\s+las\s+marcas|todas?\s+marcas|cualquier(?:a)?\s+marca|sin\s+preferencia(?:\s+de)?\s+marca)\b/.test(text);
+  if (parsed.allBrands) text = text.replace(/\b(?:todas?\s+las\s+marcas|todas?\s+marcas|cualquier(?:a)?\s+marca|sin\s+preferencia(?:\s+de)?\s+marca)\b/g, ' ');
+
+  for (const [quality, pattern] of QUALITY_PATTERNS) {
+    pattern.lastIndex = 0;
+    if (pattern.test(text)) {
+      parsed.qualities.push(quality);
+      text = text.replace(pattern, ' ');
+    }
+  }
+  for (const [gender, pattern] of GENDER_PATTERNS) {
+    pattern.lastIndex = 0;
+    if (pattern.test(text)) {
+      parsed.genders.push(gender);
+      text = text.replace(pattern, ' ');
+    }
+  }
+
+  const sizePattern = '(?:xxs|xs|s|m|l|xl|xxl|2xl|3xl|4xl|\\d{1,2}(?:\\.\\d)?)';
+  const standaloneSize = text.trim().match(new RegExp(`^(${sizePattern})$`, 'i'));
+  if (standaloneSize) {
+    parsed.sizes.push(standaloneSize[1].replace(/\s/g, '.').toUpperCase());
+    text = ' ';
+  }
+  const sizeMatch = text.match(new RegExp(`\\b(?:talla|size|tla)\\s+(${sizePattern})\\b`, 'i'));
   if (sizeMatch) {
     parsed.sizes.push(sizeMatch[1].replace(/\s/g, '.').toUpperCase());
     text = text.replace(sizeMatch[0], ' ');
@@ -235,7 +278,8 @@ function parseQuery(knowledge, message) {
   }
 
   parsed.hasSignal = !!(parsed.brands.length || parsed.categories.length || parsed.terms.length ||
-    parsed.colors.length || parsed.sizes.length || parsed.max || parsed.min);
+    parsed.colors.length || parsed.sizes.length || parsed.qualities.length || parsed.genders.length ||
+    parsed.allBrands || parsed.max || parsed.min);
   parsed.strongSignal = !!(parsed.brands.length || parsed.categories.length);
   return parsed;
 }
@@ -262,6 +306,10 @@ function applyFilters(products, parsed, skip) {
         !p.variants.some(v => v.inStock && v.size && parsed.sizes.includes(v.size))) return false;
     if (parsed.colors.length && !skip.has('color') &&
         !p.variants.some(v => v.inStock && v.color && parsed.colors.includes(colorStem(norm(v.color).split(' ')[0])))) return false;
+    if (parsed.qualities?.length && !parsed.qualities.some(quality =>
+      new RegExp(`\\b${quality}\\b`).test(p.searchText))) return false;
+    if (parsed.genders?.length && !parsed.genders.some(gender =>
+      new RegExp(`\\b${gender}\\b`).test(p.searchText))) return false;
     if (parsed.max && !skip.has('price') && p.price > parsed.max) return false;
     if (parsed.min && !skip.has('price') && p.price < parsed.min) return false;
     return true;
@@ -285,35 +333,25 @@ function score(product, parsed) {
  */
 async function searchCatalog(tenantId, parsed, limit = 12) {
   const knowledge = await loadKnowledge(tenantId);
-  const order = ['size', 'color', 'price', 'category', 'brand'];
-  const skip = new Set();
-  const relaxed = [];
-
-  const run = () => {
-    let list = applyFilters(knowledge.products, parsed, skip);
-    if (parsed.terms.length) {
-      const scored = list.map(p => ({ p, s: score(p, parsed) }));
-      const hits = scored.filter(x => x.s > 0);
-      if (!hits.length && parsed.terms.some(t => COLOR_ALIASES[t]) && !relaxed.includes('color')) relaxed.push('color');
-      list = hits.length ? hits.sort((a, b) => b.s - a.s).map(x => x.p) : (parsed.strongSignal ? list : []);
-    }
-    return list;
-  };
-
-  let matches = run();
-  for (const constraint of order) {
-    if (matches.length) break;
-    const used = { size: parsed.sizes.length, color: parsed.colors.length, price: parsed.min || parsed.max,
-      category: parsed.categories.length, brand: parsed.brands.length }[constraint];
-    if (!used) continue;
-    skip.add(constraint);
-    relaxed.push(constraint);
-    matches = run();
+  let matches = applyFilters(knowledge.products, parsed, new Set());
+  if (parsed.terms.length) {
+    matches = matches.filter(product => parsed.terms.every(term => {
+      const candidates = COLOR_ALIASES[term] || [term];
+      return candidates.some(candidate => product.titleNorm.includes(candidate) || product.haystack.includes(candidate));
+    })).sort((a, b) => score(b, parsed) - score(a, parsed));
   }
 
   // Cheapest-first among equally relevant results is more useful in a shop chat
   if (!parsed.terms.length) matches = [...matches].sort((a, b) => a.price - b.price);
-  return { matches: matches.slice(0, limit), total: matches.length, relaxed: [...new Set(relaxed)], knowledge };
+  return { matches: matches.slice(0, limit), total: matches.length, relaxed: [], knowledge };
+}
+
+function getAvailableQualities(knowledge, parsed) {
+  const products = knowledge.products.filter(product => product.inStock &&
+    (!parsed.categories.length || parsed.categories.some(category => matchesCategory(product, category))) &&
+    (!parsed.brands.length || parsed.brands.some(brand => norm(product.brand) === brand || product.titleNorm.includes(brand))));
+  return QUALITY_TYPES.filter(quality => products.some(product =>
+    new RegExp(`\\b${quality}\\b`).test(product.searchText)));
 }
 
 function buildStoreSummary(knowledge) {
@@ -325,4 +363,6 @@ function buildStoreSummary(knowledge) {
   return `Modelos disponibles hoy: ${inStock.length}\nMarcas: ${brands}\nCategorías:\n${cats}`;
 }
 
-module.exports = { loadKnowledge, invalidateKnowledge, parseQuery, searchCatalog, buildStoreSummary, norm };
+module.exports = {
+  loadKnowledge, invalidateKnowledge, parseQuery, searchCatalog, buildStoreSummary, getAvailableQualities, norm
+};

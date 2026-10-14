@@ -8,7 +8,12 @@ jest.mock('../db/localCache', () => ({
   setSession: jest.fn()
 }));
 jest.mock('../ai/agent', () => ({ processWithAI: jest.fn() }));
-jest.mock('../whatsapp/sender', () => ({ sendMessage: jest.fn() }));
+jest.mock('../whatsapp/sender', () => ({
+  sendMessage: jest.fn(), sendVoiceNote: jest.fn(), downloadMedia: jest.fn()
+}));
+jest.mock('../whatsapp/media', () => ({
+  transcribeAudio: jest.fn(), synthesizeVoice: jest.fn()
+}));
 jest.mock('../utils/logger', () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
 }));
@@ -20,7 +25,8 @@ const { query } = require('../db');
 const { findCustomer } = require('../crm/customers');
 const { getSession, setSession } = require('../db/localCache');
 const { processWithAI } = require('../ai/agent');
-const { sendMessage } = require('../whatsapp/sender');
+const { sendMessage, sendVoiceNote, downloadMedia } = require('../whatsapp/sender');
+const { transcribeAudio, synthesizeVoice } = require('../whatsapp/media');
 const webhookRouter = require('./webhooks');
 
 const tenant = { id: 'tenant-1', status: 'active', whatsapp_phone_number_id: '123456789012345' };
@@ -58,6 +64,10 @@ describe('Meta WhatsApp webhook', () => {
       context: {}
     }));
     sendMessage.mockResolvedValue({ messages: [{ id: 'wamid.reply' }] });
+    sendVoiceNote.mockResolvedValue({ messages: [{ id: 'wamid.voice.reply' }] });
+    downloadMedia.mockResolvedValue({ buffer: Buffer.from('voice'), mime: 'audio/ogg' });
+    transcribeAudio.mockResolvedValue('Busco gorras turcas');
+    synthesizeVoice.mockResolvedValue(Buffer.from('reply-audio'));
   });
 
   afterAll(() => {
@@ -109,8 +119,8 @@ describe('Meta WhatsApp webhook', () => {
     query.mockImplementation(async sql => {
       if (sql.includes('SELECT direction, content FROM messages')) {
         return { rows: [
-          { direction: 'outbound', content: 'Te mostré unos tenis Nike.' },
-          { direction: 'inbound', content: 'Me gustaron, pero no en blanco.' }
+          { direction: 'inbound', content: 'Me gustaron, pero no en blanco.' },
+          { direction: 'outbound', content: 'Te mostré unos tenis Nike.' }
         ] };
       }
       if (sql.includes('INSERT INTO messages')) return { rows: [], rowCount: 1 };
@@ -141,5 +151,32 @@ describe('Meta WhatsApp webhook', () => {
       'text',
       {}
     );
+  });
+  test('sends the validated catalog link as text after a voice reply', async () => {
+    const from = '573001234567';
+    const catalogUrl = 'https://storesgmedellin.co/search?q=gorras+turca&filter.v.availability=1';
+    processWithAI.mockResolvedValue({
+      text: 'Encontré opciones disponibles.',
+      catalogUrl,
+      intent: 'product_search',
+      confidence: 0.9,
+      state: 'browsing',
+      context: {}
+    });
+    const payload = {
+      object: 'whatsapp_business_account',
+      entry: [{ changes: [{ value: {
+        metadata: { phone_number_id: tenant.whatsapp_phone_number_id },
+        contacts: [{ wa_id: from, profile: { name: 'Ana' } }],
+        messages: [{ id: 'wamid.in.voice', from, type: 'audio', audio: { id: 'media-1' } }]
+      } }] }]
+    };
+
+    const response = await signedRequest(payload);
+    await new Promise(resolve => setImmediate(resolve));
+
+    expect(response.status).toBe(200);
+    expect(sendVoiceNote).toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledWith(tenant, from, `Te comparto el catálogo: ${catalogUrl}`);
   });
 });
