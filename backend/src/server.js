@@ -175,7 +175,10 @@ app.use((req, res) => res.status(404).json({ error: 'Ruta no encontrada: ' + req
 // Start
 app.listen(PORT, () => {
   logger.info('🚀 Server on port ' + PORT);
-  if (process.env.NODE_ENV !== 'test') require('./shopify/sync').startAutoSync();
+  if (process.env.NODE_ENV !== 'test') {
+    require('./shopify/sync').startAutoSync();
+    require('./ai/learning').startDailyLearning();
+  }
 });
 
 module.exports = app;

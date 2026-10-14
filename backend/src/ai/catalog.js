@@ -372,5 +372,5 @@ function buildStoreSummary(knowledge) {
 }
 
 module.exports = {
-  loadKnowledge, invalidateKnowledge, parseQuery, searchCatalog, buildStoreSummary, getAvailableQualities, sizeMatches, norm
+  loadKnowledge, invalidateKnowledge, parseQuery, searchCatalog, buildStoreSummary, getAvailableQualities, sizeMatches, stem, norm
 };

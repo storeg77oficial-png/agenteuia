@@ -5,6 +5,8 @@
 const { logger } = require('../utils/logger');
 const { loadKnowledge, parseQuery, searchCatalog, buildStoreSummary, getAvailableQualities, sizeMatches, norm } = require('./catalog');
 const { refreshProductsLive } = require('../shopify/sync');
+const { getTrainingData } = require('./training');
+const learning = require('./learning');
 const llm = require('./llm');
 const { GLOSSARY } = require('./colombian');
 
@@ -146,6 +148,10 @@ function templateReply(result, parsed, customer, message) {
 async function llmReply(tenant, customer, session, message, result, parsed, extras = {}) {
   const training = (await getTrainingData(tenant.id)).slice(0, 25)
     .map(t => `P: ${t.question}\nR: ${t.answer}`).join('\n');
+  const [customerMemory, insights] = await Promise.all([
+    learning.describeCustomer(tenant.id, customer?.id),
+    learning.getInsightsPrompt(tenant.id)
+  ]);
 
   const system = [
     `Eres la asesora de ventas de ${tenant.business_name}, tienda de ropa y accesorios de marca en Medellín, atendiendo por WhatsApp.`,
@@ -178,6 +184,10 @@ async function llmReply(tenant, customer, session, message, result, parsed, extr
       : null,
     `INFORMACIÓN DEL NEGOCIO:\nDirección: ${tenant.address || ''}\nTeléfono: ${tenant.phone || ''}\nHorario: ${tenant.business_hours || ''}\n${training}`,
     `RESUMEN DE LA TIENDA:\n${buildStoreSummary(result.knowledge)}`,
+    insights,
+    customerMemory
+      ? `MEMORIA DEL CLIENTE (de visitas anteriores; úsala con naturalidad y nunca contra lo que él diga ahora): ${customerMemory}`
+      : null,
     `BÚSQUEDA DEL CLIENTE: ${describeFilters(parsed, result.knowledge)}\najustes: ${result.relaxed.join(', ') || 'ninguno'}`,
     `DATOS DE LA TIENDA: coincidencias exactas disponibles: ${result.total}.\nENLACE DE CATÁLOGO VALIDADO: ${result.catalogUrl || 'No hay un enlace público que aplique todos los filtros solicitados.'}`
   ].filter(Boolean).join('\n\n');
@@ -203,7 +213,16 @@ function mergeDuplicates(matches) {
 
 async function handleSellerTurn(tenant, customer, session, message, extras = {}) {
   const knowledge = await loadKnowledge(tenant.id);
-  let parsed = mergeWithPrevious(parseQuery(knowledge, message), session.context?.lastFilters);
+  const vocab = await learning.getLearnedVocab(tenant.id);
+  const fresh = parseQuery(knowledge, learning.applyLearnedVocab(message, vocab));
+  let parsed = mergeWithPrevious(fresh, session.context?.lastFilters);
+
+  // Known customer, no size given: use the size they usually ask for and say so
+  let assumedSize = null;
+  if (!parsed.sizes.length && parsed.categories.length === 1 && SIZE_REQUIRED_CATEGORIES.has(parsed.categories[0])) {
+    assumedSize = await learning.getUsualSize(tenant.id, customer?.id, parsed.categories[0]);
+    if (assumedSize) parsed = { ...parsed, sizes: [assumedSize] };
+  }
 
   if (!parsed.hasSignal || (!parsed.categories.length && !parsed.terms.length)) {
     return {
@@ -257,6 +276,10 @@ async function handleSellerTurn(tenant, customer, session, message, extras = {})
   }
   if (!text) text = templateReply(result, parsed, customer, message);
   if (extras.voice && result.catalogUrl) text = text.replace(result.catalogUrl, '').trim();
+  if (assumedSize) text = `${text}\n\nTe mostré la talla ${assumedSize}, la que sueles pedir; si buscas otra, dímelo.`;
+
+  const exact = result.matches.length > 0 && !(result.relaxed || []).length;
+  learning.observeTurn({ tenantId: tenant.id, customerId: customer?.id, fresh, parsed, exact });
 
   return {
     text: text.slice(0, 1800),

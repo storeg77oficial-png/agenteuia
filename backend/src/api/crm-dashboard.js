@@ -11,6 +11,7 @@ const axios = require('axios');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const { query } = require('../db');
+const learning = require('../ai/learning');
 
 const ENV_PATH = path.join(__dirname, '..', '..', '.env');
 const dashboardLoginLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false });
@@ -186,6 +187,41 @@ router.get('/dashboard/orders', requireDashboardAuth, async (req, res) => {
         res.json({ orders: orders.rows });
     } catch (error) {
         res.status(500).json({ error: 'No se pudieron cargar los pedidos' });
+    }
+});
+
+router.get('/dashboard/learning', requireDashboardAuth, async (req, res) => {
+    try {
+        res.json(await learning.getLearningOverview(req.dashboardUser.tenantId));
+    } catch (error) {
+        res.status(500).json({ error: 'No se pudo cargar el aprendizaje' });
+    }
+});
+
+router.post('/dashboard/learning/run', requireDashboardAuth, async (req, res) => {
+    try {
+        res.json(await learning.runDailyLearning({ id: req.dashboardUser.tenantId }, { force: true }));
+    } catch (error) {
+        res.status(500).json({ error: 'No se pudo ejecutar el aprendizaje' });
+    }
+});
+
+router.post('/dashboard/learning/vocab', requireDashboardAuth, async (req, res) => {
+    try {
+        const added = await learning.addVocab(req.dashboardUser.tenantId, req.body || {});
+        if (!added) return res.status(400).json({ error: 'Palabra o destino inválido (type: category, brand o color)' });
+        res.json(added);
+    } catch (error) {
+        res.status(500).json({ error: 'No se pudo guardar la palabra' });
+    }
+});
+
+router.post('/dashboard/learning/vocab/:id', requireDashboardAuth, async (req, res) => {
+    try {
+        const updated = await learning.setVocabStatus(req.dashboardUser.tenantId, req.params.id, req.body?.status);
+        res.status(updated ? 200 : 404).json({ updated });
+    } catch (error) {
+        res.status(500).json({ error: 'No se pudo actualizar la palabra' });
     }
 });
 

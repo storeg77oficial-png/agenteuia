@@ -9,9 +9,20 @@ jest.mock('./catalog', () => ({
 }));
 jest.mock('../shopify/sync', () => ({ refreshProductsLive: jest.fn() }));
 jest.mock('./training', () => ({ getTrainingData: jest.fn() }));
+jest.mock('./learning', () => ({
+  getLearnedVocab: jest.fn(),
+  applyLearnedVocab: jest.fn(message => message),
+  getUsualSize: jest.fn(),
+  describeCustomer: jest.fn(),
+  getInsightsPrompt: jest.fn(),
+  observeTurn: jest.fn()
+}));
 jest.mock('./llm', () => ({ isEnabled: jest.fn(() => false), chat: jest.fn() }));
 
-const { loadKnowledge, parseQuery, searchCatalog, getAvailableQualities } = require('./catalog');
+const { loadKnowledge, parseQuery, searchCatalog, buildStoreSummary, getAvailableQualities } = require('./catalog');
+const { getTrainingData } = require('./training');
+const learning = require('./learning');
+const llm = require('./llm');
 const { refreshProductsLive } = require('../shopify/sync');
 const { handleSellerTurn } = require('./seller');
 
@@ -42,6 +53,12 @@ describe('sales assistant catalog replies', () => {
     refreshProductsLive.mockResolvedValue(false);
     searchCatalog.mockResolvedValue({ matches: matches(), total: 17, relaxed: [], knowledge });
     getAvailableQualities.mockReturnValue([]);
+    learning.getLearnedVocab.mockResolvedValue(new Map());
+    learning.applyLearnedVocab.mockImplementation(message => message);
+    learning.getUsualSize.mockResolvedValue(null);
+    learning.describeCustomer.mockResolvedValue(null);
+    learning.getInsightsPrompt.mockResolvedValue(null);
+    llm.isEnabled.mockReturnValue(false);
   });
 
   test('asks for the missing size and preserves the current filters', async () => {
@@ -92,5 +109,48 @@ describe('sales assistant catalog replies', () => {
     const catalogUrl = new URL(result.catalogUrl);
 
     expect(catalogUrl.searchParams.getAll('filter.v.option.talla')).toEqual(['9', '8.5 - 9']);
+  });
+
+  test('answers through the LLM with learned context without breaking the reply', async () => {
+    llm.isEnabled.mockReturnValue(true);
+    llm.chat.mockResolvedValue('Claro, mira estas opciones');
+    getTrainingData.mockResolvedValue([]);
+    buildStoreSummary.mockReturnValue('resumen');
+    learning.describeCustomer.mockResolvedValue('tallas habituales: camisetas talla S');
+    learning.getInsightsPrompt.mockResolvedValue('APRENDIZAJE DE LA ÚLTIMA SEMANA');
+    parseQuery.mockReturnValue(filters());
+
+    const result = await handleSellerTurn(tenant, customer, session, 'Busco camisetas Nike');
+    const system = llm.chat.mock.calls[0][0][0].content;
+
+    expect(result.text).toContain('Claro, mira estas opciones');
+    expect(result.text).toContain(result.catalogUrl);
+    expect(system).toContain('MEMORIA DEL CLIENTE');
+    expect(system).toContain('APRENDIZAJE DE LA ÚLTIMA SEMANA');
+  });
+
+  test('uses the size the customer usually asks for and says so', async () => {
+    learning.getUsualSize.mockResolvedValue('M');
+    parseQuery.mockReturnValue(filters({ sizes: [], qualities: [] }));
+
+    const result = await handleSellerTurn(tenant, { id: 'c1' }, session, 'Busco camisetas Nike');
+
+    expect(searchCatalog.mock.calls[0][1].sizes).toEqual(['M']);
+    expect(result.text).toContain('la talla M, la que sueles pedir');
+    expect(result.context.lastFilters.sizes).toEqual(['M']);
+  });
+
+  test('understands learned vocabulary and reports what it observed', async () => {
+    const vocab = new Map([['chompa', { word: 'chaqueta' }]]);
+    learning.getLearnedVocab.mockResolvedValue(vocab);
+    learning.applyLearnedVocab.mockReturnValue('Busco chaqueta talla S');
+    parseQuery.mockReturnValue(filters({ categories: ['chaquetas'] }));
+
+    await handleSellerTurn(tenant, { id: 'c1' }, session, 'Busco chompa talla S');
+
+    expect(parseQuery.mock.calls[0][1]).toBe('Busco chaqueta talla S');
+    expect(learning.observeTurn).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant-1', customerId: 'c1', exact: true
+    }));
   });
 });
