@@ -29,7 +29,9 @@ describe('catalog sales filters', () => {
       product(1, 'CAMISETA NIKE PREMIUM', 'Nike', 'camisetas', 'S', 'HOMBRE'),
       product(2, 'CAMISETA NIKE TURCA', 'Nike', 'camisetas', 'S', 'MUJER'),
       product(3, 'CAMISETA ADIDAS PREMIUM', 'Adidas', 'camisetas', 'M', 'HOMBRE'),
-      product(4, 'GORRA GUCCI TURCA', 'Gucci', 'gorras', 'Unitalla')
+      product(4, 'GORRA GUCCI TURCA', 'Gucci', 'gorras', 'Unitalla'),
+      product(5, 'TENIS NIKE AIR MAX TL 2.5 ORIGINAL-', 'Nike', 'zapatos', '9', '', ['TENIS ORIGINALES']),
+      product(6, 'TENIS NIKE 1.1-', 'Nike', 'zapatos', '8.5 - 9', '', ['TENIS 1.1'])
     ] });
   });
 
@@ -62,5 +64,14 @@ describe('catalog sales filters', () => {
 
     expect(result.matches.map(match => match.id)).toEqual([1]);
     expect(result.relaxed).toEqual([]);
+  });
+
+  test('matches a requested shoe size inside a combined Shopify size option', async () => {
+    const knowledge = await loadKnowledge('tenant-1');
+    const parsed = parseQuery(knowledge, 'Busco tenis Nike en talla 9');
+    const result = await searchCatalog('tenant-1', parsed);
+
+    expect(parsed).toMatchObject({ brands: ['nike'], categories: ['zapatos'], sizes: ['9'] });
+    expect(result.matches.map(match => match.id).sort()).toEqual([5, 6]);
   });
 });

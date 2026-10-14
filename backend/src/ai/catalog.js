@@ -295,6 +295,14 @@ function matchesCategory(product, category) {
   return regex.test(product.titleNorm);
 }
 
+function sizeMatches(requested, available) {
+  const requestedSize = String(requested || '').trim().replace(',', '.').toUpperCase();
+  const availableSize = String(available || '').trim().replace(',', '.').toUpperCase();
+  if (requestedSize === availableSize) return true;
+  if (!/^\d{1,2}(?:\.\d)?$/.test(requestedSize)) return false;
+  return availableSize.split(/\s*(?:-|–|—|\/)\s*/).includes(requestedSize);
+}
+
 function applyFilters(products, parsed, skip) {
   return products.filter(p => {
     if (!p.inStock || !(p.price > 0)) return false;
@@ -303,7 +311,7 @@ function applyFilters(products, parsed, skip) {
     if (parsed.categories.length && !skip.has('category') &&
         !parsed.categories.some(c => matchesCategory(p, c))) return false;
     if (parsed.sizes.length && !skip.has('size') &&
-        !p.variants.some(v => v.inStock && v.size && parsed.sizes.includes(v.size))) return false;
+      !p.variants.some(v => v.inStock && v.size && parsed.sizes.some(size => sizeMatches(size, v.size)))) return false;
     if (parsed.colors.length && !skip.has('color') &&
         !p.variants.some(v => v.inStock && v.color && parsed.colors.includes(colorStem(norm(v.color).split(' ')[0])))) return false;
     if (parsed.qualities?.length && !parsed.qualities.some(quality =>

@@ -10,6 +10,7 @@ const SIZE_RE = /^(xxs|xs|s|m|l|xl|xxl|2xl|3xl|4xl|\d{2}(?:[.,]5)?|unica|unico|Ã
 const KNOWN_BRANDS = ['Nike', 'Adidas', 'Calvin Klein', 'Burberry', 'Gucci', 'Louis Vuitton', 'Armani',
   'Coach', 'Lacoste', 'Purple', 'Michael Kors', 'Emotion', 'Godspeed', 'Off White', 'Guess'];
 
+let syncing = false;
 let columnsChecked = false;
 
 function getConfig(tenant) {
