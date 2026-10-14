@@ -105,13 +105,18 @@ function stockOf(variant) {
   return Math.max(0, variant.inventory_quantity || 0);
 }
 
+function isPurchasable(variant) {
+  if (typeof variant.available === 'boolean') return variant.available;
+  return stockOf(variant) > 0 || variant.inventory_policy === 'continue';
+}
+
 async function upsertVariant(tenantId, product, variant) {
   const { size, color } = splitOptions(product, variant);
   const qty = stockOf(variant);
   const sizes = size ? [size] : [];
   const colors = color ? [color] : [];
   const tags = product.tags ? product.tags.split(', ').filter(Boolean) : [];
-  const inStock = qty > 0;
+  const inStock = isPurchasable(variant);
   const requiresShipping = Boolean(variant.requires_shipping);
   const values = {
     title: product.title,
@@ -215,14 +220,14 @@ async function refreshProductsLive(tenant, shopifyProductIds) {
     for (const variant of result.value.data.product.variants) {
       const qty = stockOf(variant);
       const current = await query(
-        'SELECT stock_quantity, price FROM products WHERE tenant_id = $1 AND shopify_variant_id = $2',
+        'SELECT stock_quantity, price, in_stock FROM products WHERE tenant_id = $1 AND shopify_variant_id = $2',
         [tenant.id, variant.id]
       );
       const row = current.rows[0];
       if (!row) continue;
       const price = parseFloat(variant.price);
-      if (row.stock_quantity !== qty || row.price !== price) {
-        const inStock = qty > 0;
+      const inStock = isPurchasable(variant);
+      if (row.stock_quantity !== qty || row.price !== price || Boolean(row.in_stock) !== inStock) {
         await query(
           'UPDATE products SET stock_quantity = $1, in_stock = $2, available_for_sale = $3, price = $4, last_synced_at = NOW() WHERE tenant_id = $5 AND shopify_variant_id = $6',
           [qty, isLocal ? Number(inStock) : inStock, isLocal ? Number(inStock) : inStock, price, tenant.id, variant.id]
@@ -251,4 +256,4 @@ function startAutoSync() {
   logger.info(`Shopify auto-sync every ${minutes} min`);
 }
 
-module.exports = { syncCatalog, refreshProductsLive, startAutoSync };
+module.exports = { syncCatalog, refreshProductsLive, startAutoSync, isPurchasable };

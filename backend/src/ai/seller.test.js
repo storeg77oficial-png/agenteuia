@@ -4,6 +4,7 @@ jest.mock('./catalog', () => ({
   searchCatalog: jest.fn(),
   buildStoreSummary: jest.fn(),
   getAvailableQualities: jest.fn(),
+  sizeMatches: (requested, available) => String(available || '').split(/\s*(?:-|–|—|\/)\s*/).includes(String(requested)),
   norm: value => String(value || '').toLowerCase()
 }));
 jest.mock('../shopify/sync', () => ({ refreshProductsLive: jest.fn() }));
@@ -77,5 +78,19 @@ describe('sales assistant catalog replies', () => {
 
     expect(result.catalogUrl).toBeNull();
     expect(result.text).toContain('no puedo generar un enlace');
+  });
+
+  test('includes exact and combined Shopify size labels in the catalog link', async () => {
+    parseQuery.mockReturnValue(filters({ brands: ['nike'], categories: ['zapatos'], sizes: ['9'], qualities: ['original'] }));
+    const shoeMatches = [
+      { ...matches()[0], brand: 'Nike', category: 'zapatos', variants: [{ size: '9', inStock: true }] },
+      { ...matches()[0], id: 2, title: 'Tenis Nike 1.1', brand: 'Nike', category: 'zapatos', variants: [{ size: '8.5 - 9', inStock: true }] }
+    ];
+    searchCatalog.mockResolvedValue({ matches: shoeMatches, total: 2, relaxed: [], knowledge });
+
+    const result = await handleSellerTurn(tenant, customer, session, 'Busco tenis Nike talla 9');
+    const catalogUrl = new URL(result.catalogUrl);
+
+    expect(catalogUrl.searchParams.getAll('filter.v.option.talla')).toEqual(['9', '8.5 - 9']);
   });
 });

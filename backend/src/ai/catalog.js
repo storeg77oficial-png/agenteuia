@@ -101,7 +101,7 @@ async function loadKnowledge(tenantId, force = false) {
       size: parseJson(row.sizes, [])[0] || null,
       color: parseJson(row.colors, [])[0] || null,
       qty: row.stock_quantity || 0,
-      inStock: !!row.in_stock && (row.stock_quantity || 0) > 0,
+      inStock: !!row.in_stock,
       price: row.price
     });
   }
@@ -372,5 +372,5 @@ function buildStoreSummary(knowledge) {
 }
 
 module.exports = {
-  loadKnowledge, invalidateKnowledge, parseQuery, searchCatalog, buildStoreSummary, getAvailableQualities, norm
+  loadKnowledge, invalidateKnowledge, parseQuery, searchCatalog, buildStoreSummary, getAvailableQualities, sizeMatches, norm
 };

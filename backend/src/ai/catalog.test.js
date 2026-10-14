@@ -74,4 +74,18 @@ describe('catalog sales filters', () => {
     expect(parsed).toMatchObject({ brands: ['nike'], categories: ['zapatos'], sizes: ['9'] });
     expect(result.matches.map(match => match.id).sort()).toEqual([5, 6]);
   });
+
+  test('keeps Shopify-purchasable variants even when tracked quantity is zero', async () => {
+    const purchasable = product(7, 'TENIS NIKE 1.1-', 'Nike', 'zapatos', '8.5 - 9');
+    purchasable.stock_quantity = 0;
+    query.mockResolvedValue({ rows: [purchasable] });
+    invalidateKnowledge();
+
+    const result = await searchCatalog('tenant-1', {
+      brands: ['nike'], categories: ['zapatos'], sizes: ['9'], colors: [], terms: [],
+      qualities: [], genders: [], min: null, max: null
+    });
+
+    expect(result.matches.map(match => match.id)).toEqual([7]);
+  });
 });

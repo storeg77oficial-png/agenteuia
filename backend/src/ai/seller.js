@@ -3,9 +3,8 @@
  * is configured, phrases it like a human salesperson.
  */
 const { logger } = require('../utils/logger');
-const { loadKnowledge, parseQuery, searchCatalog, buildStoreSummary, getAvailableQualities, norm } = require('./catalog');
+const { loadKnowledge, parseQuery, searchCatalog, buildStoreSummary, getAvailableQualities, sizeMatches, norm } = require('./catalog');
 const { refreshProductsLive } = require('../shopify/sync');
-const { getTrainingData } = require('./training');
 const llm = require('./llm');
 const { GLOSSARY } = require('./colombian');
 
@@ -16,7 +15,7 @@ function productUrl(p) {
   return p.handle ? `${STORE_URL}/products/${p.handle}` : null;
 }
 
-function buildCatalogUrl(parsed, knowledge) {
+function buildCatalogUrl(parsed, knowledge, matches = []) {
   if (parsed.genders.length || parsed.colors.length || parsed.min || parsed.max) return null;
   const terms = [
     ...parsed.categories,
@@ -29,7 +28,14 @@ function buildCatalogUrl(parsed, knowledge) {
   const url = new URL('/search', STORE_URL);
   url.searchParams.set('q', [...new Set(terms)].join(' '));
   url.searchParams.set('filter.v.availability', '1');
-  for (const size of parsed.sizes) url.searchParams.append('filter.v.option.talla', size);
+  const matchingSizes = [...new Set(matches.flatMap(product =>
+    (product.variants || [])
+      .filter(variant => variant.inStock && parsed.sizes.some(size => sizeMatches(size, variant.size)))
+      .map(variant => variant.size)
+  ))];
+  for (const size of matchingSizes.length ? matchingSizes : parsed.sizes) {
+    url.searchParams.append('filter.v.option.talla', size);
+  }
   return url.toString();
 }
 
@@ -227,7 +233,7 @@ async function handleSellerTurn(tenant, customer, session, message, extras = {})
   }
 
   result = { ...result, matches: mergeDuplicates(result.matches).slice(0, 6) };
-  result.catalogUrl = buildCatalogUrl(parsed, knowledge);
+  result.catalogUrl = buildCatalogUrl(parsed, knowledge, result.matches);
   result.unsupportedFilters = [
     ...(parsed.genders.length ? ['género'] : []),
     ...(parsed.colors.length ? ['color'] : []),
