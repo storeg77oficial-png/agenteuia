@@ -179,4 +179,87 @@ describe('Meta WhatsApp webhook', () => {
     expect(sendVoiceNote).toHaveBeenCalled();
     expect(sendMessage).toHaveBeenCalledWith(tenant, from, `Te comparto el catálogo: ${catalogUrl}`);
   });
+
+  test('notifies the advisor and persists handoff when the AI transfers a conversation', async () => {
+    const from = '573001234567';
+    processWithAI.mockResolvedValue({
+      text: 'Ya le aviso a una asesora para que te ayude.',
+      intent: 'product_search',
+      confidence: 0.4,
+      reason: 'Repeated identical reply',
+      transferToHuman: true,
+      context: { confusionCount: 2 }
+    });
+    const payload = {
+      object: 'whatsapp_business_account',
+      entry: [{ changes: [{ value: {
+        metadata: { phone_number_id: tenant.whatsapp_phone_number_id },
+        contacts: [{ wa_id: from, profile: { name: 'Ana' } }],
+        messages: [{ id: 'wamid.in.handoff', from, type: 'text', text: { body: 'Estás alucinando' } }]
+      } }] }]
+    };
+
+    const response = await signedRequest(payload);
+    await new Promise(resolve => setImmediate(resolve));
+
+    expect(response.status).toBe(200);
+    expect(setSession).toHaveBeenCalledWith(from, expect.objectContaining({
+      state: 'human_handoff',
+      context: expect.objectContaining({ transferReason: 'Repeated identical reply' })
+    }));
+    expect(sendMessage).toHaveBeenCalledWith(tenant, from, 'Ya le aviso a una asesora para que te ayude.');
+    expect(sendMessage).toHaveBeenCalledWith(tenant, '573123300959', expect.stringContaining('Estás alucinando'));
+  });
+
+  test('forwards new messages to the advisor without invoking AI during handoff', async () => {
+    const from = '573001234567';
+    getSession.mockResolvedValue({ state: 'human_handoff', context: {}, messageCount: 1 });
+    const payload = {
+      object: 'whatsapp_business_account',
+      entry: [{ changes: [{ value: {
+        metadata: { phone_number_id: tenant.whatsapp_phone_number_id },
+        contacts: [{ wa_id: from, profile: { name: 'Ana' } }],
+        messages: [{ id: 'wamid.in.queued', from, type: 'text', text: { body: 'También busco talla 8' } }]
+      } }] }]
+    };
+
+    const response = await signedRequest(payload);
+    await new Promise(resolve => setImmediate(resolve));
+
+    expect(response.status).toBe(200);
+    expect(processWithAI).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledWith(tenant, '573123300959', expect.stringContaining('También busco talla 8'));
+  });
+
+  test('gives the customer the advisor contact when Meta rejects the handoff notification', async () => {
+    const from = '573001234567';
+    processWithAI.mockResolvedValue({
+      text: 'Ya le aviso a una asesora.',
+      intent: 'product_search',
+      confidence: 0.4,
+      transferToHuman: true,
+      reason: 'Repeated identical reply',
+      context: {}
+    });
+    sendMessage.mockImplementation(async (currentTenant, to) => {
+      if (to === '573123300959') throw new Error('Meta rejected the message');
+      return { messages: [{ id: 'wamid.reply' }] };
+    });
+    const payload = {
+      object: 'whatsapp_business_account',
+      entry: [{ changes: [{ value: {
+        metadata: { phone_number_id: tenant.whatsapp_phone_number_id },
+        contacts: [{ wa_id: from, profile: { name: 'Ana' } }],
+        messages: [{ id: 'wamid.in.handoff-failed', from, type: 'text', text: { body: 'Necesito ayuda' } }]
+      } }] }]
+    };
+
+    const response = await signedRequest(payload);
+    await new Promise(resolve => setImmediate(resolve));
+
+    expect(response.status).toBe(200);
+    expect(sendMessage).toHaveBeenCalledWith(tenant, from,
+      expect.stringContaining('escríbele directamente a nuestra asesora: +573123300959'));
+  });
 });

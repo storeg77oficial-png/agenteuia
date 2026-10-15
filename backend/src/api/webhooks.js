@@ -15,6 +15,7 @@ const { logger } = require('../utils/logger');
 const router = express.Router();
 const seenMessages = new Map();
 const SEEN_TTL_MS = 10 * 60 * 1000;
+const HUMAN_ADVISOR_PHONE = process.env.HUMAN_ADVISOR_PHONE || '573123300959';
 
 function isDuplicate(id) {
   if (!id) return false;
@@ -118,6 +119,18 @@ async function handleMessage(tenant, value, message) {
   }
 
   const session = (await getSession(message.from)) || { state: 'new', context: {}, messageCount: 0 };
+  if (session.state === 'human_handoff') {
+    await logEvent(tenant.id, customer.id, 'message_queued_for_human', { phone: message.from, content: text });
+    try {
+      await sendMessage(tenant, HUMAN_ADVISOR_PHONE,
+        `Cliente en espera de asesora\nNombre: ${customer.name || 'Cliente'}\nTeléfono: +${message.from}\nMensaje: ${text}`.slice(0, 4000));
+    } catch (error) {
+      logger.error('Could not notify human advisor about queued message', { error: error.message });
+      await sendMessage(tenant, message.from,
+        `No logré enviar tu mensaje automáticamente. Para que no tengas que esperar, escríbele directamente a nuestra asesora: +${HUMAN_ADVISOR_PHONE}.`);
+    }
+    return;
+  }
   try {
     const history = await query(
       'SELECT direction, content FROM messages WHERE tenant_id = $1 AND customer_id = $2 ORDER BY created_at DESC LIMIT 12',
@@ -135,11 +148,23 @@ async function handleMessage(tenant, value, message) {
   }
 
   const aiResponse = await processWithAI(tenant, customer, session, text, message.type, incoming.extras);
-  const reply = aiResponse.text || '¿En qué te puedo ayudar?';
+  let reply = aiResponse.text || '¿En qué te puedo ayudar?';
 
   if (aiResponse.transferToHuman) {
     logger.warn('Human advisor requested', { customer: message.from, reason: aiResponse.reason || 'conversation stuck' });
     await logEvent(tenant.id, customer.id, 'human_handoff', { reason: aiResponse.reason || null });
+    session.state = 'human_handoff';
+    session.context = { ...session.context, ...aiResponse.context, transferReason: aiResponse.reason || 'Asesora solicitada' };
+    session.messageCount = (session.messageCount || 0) + 1;
+    await setSession(message.from, session);
+    try {
+      await sendMessage(tenant, HUMAN_ADVISOR_PHONE,
+        `Nueva conversación requiere asesora\nNombre: ${customer.name || 'Cliente'}\nTeléfono: +${message.from}\nMotivo: ${aiResponse.reason || 'El cliente pidió ayuda humana'}\nMensaje: ${text}`.slice(0, 4000));
+    } catch (error) {
+      logger.error('Could not notify human advisor', { error: error.message });
+      await logEvent(tenant.id, customer.id, 'human_handoff_notification_failed', { reason: error.message });
+      reply = `No logré enviar tu mensaje automáticamente. Para que no tengas que esperar, escríbele directamente a nuestra asesora: +${HUMAN_ADVISOR_PHONE}.`;
+    }
   }
 
   // Send first so a DB failure never blocks the reply
@@ -175,10 +200,12 @@ async function handleMessage(tenant, value, message) {
     await query(sql, [tenant.id, customer.id, 'inbound', 'customer', incoming.stored, message.type || 'text', null, null, null]);
     await query(sql, [tenant.id, customer.id, 'outbound', 'ai', reply, 'text', aiResponse.intent || null, process.env.AI_MODEL || null, Number.isFinite(aiResponse.confidence) ? aiResponse.confidence : null]);
 
-    session.state = aiResponse.state || session.state;
-    session.context = { ...session.context, ...aiResponse.context };
-    session.messageCount = (session.messageCount || 0) + 1;
-    await setSession(message.from, session);
+    if (!aiResponse.transferToHuman) {
+      session.state = aiResponse.state || session.state;
+      session.context = { ...session.context, ...aiResponse.context };
+      session.messageCount = (session.messageCount || 0) + 1;
+      await setSession(message.from, session);
+    }
   } catch (error) {
     logger.error('Failed to persist conversation', { error: error.message });
   }
