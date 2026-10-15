@@ -2,9 +2,12 @@ jest.mock('../db', () => ({ query: jest.fn() }));
 jest.mock('axios', () => ({ get: jest.fn() }));
 jest.mock('../ai/training', () => ({
   listTrainingData: jest.fn(),
+  listInstructions: jest.fn(),
   getReviewReplies: jest.fn(),
   addTrainingData: jest.fn(),
-  deactivateTrainingData: jest.fn()
+  addInstruction: jest.fn(),
+  deactivateTrainingData: jest.fn(),
+  deactivateInstruction: jest.fn()
 }));
 
 const express = require('express');
@@ -39,8 +42,11 @@ describe('CRM integration status', () => {
     });
     training.getReviewReplies.mockResolvedValue([{ id: 'reply-1', question: '¿Cuánto cuesta?', response: 'No estoy segura.' }]);
     training.listTrainingData.mockResolvedValue([]);
+    training.listInstructions.mockResolvedValue([]);
     training.addTrainingData.mockResolvedValue({ id: 'rule-1', question: '¿Cuánto cuesta?', answer: 'Revisaré el precio.' });
+    training.addInstruction.mockResolvedValue({ id: 'instruction-1', instruction: 'No inventes promociones.' });
     training.deactivateTrainingData.mockResolvedValue(true);
+    training.deactivateInstruction.mockResolvedValue(true);
   });
 
   afterAll(() => {
@@ -108,5 +114,43 @@ describe('CRM integration status', () => {
     expect(training.addTrainingData).toHaveBeenCalledWith('tenant-1', {
       category: 'correction', question: '¿Cuánto cuesta?', answer: 'Revisaré el precio.'
     });
+  });
+
+  test('stores behavior instructions separately from FAQ corrections', async () => {
+    const token = jwt.sign(
+      { role: 'dashboard', tenantId: 'tenant-1' },
+      process.env.API_SECRET_KEY,
+      { audience: 'storesg-crm-dashboard' }
+    );
+
+    const response = await request(app)
+      .post('/api/crm/dashboard/instructions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ instruction: 'No inventes promociones.' });
+
+    expect(response.status).toBe(201);
+    expect(training.addInstruction).toHaveBeenCalledWith('tenant-1', 'No inventes promociones.');
+  });
+
+  test('lists and deactivates only instructions for the authenticated tenant', async () => {
+    const token = jwt.sign(
+      { role: 'dashboard', tenantId: 'tenant-1' },
+      process.env.API_SECRET_KEY,
+      { audience: 'storesg-crm-dashboard' }
+    );
+    training.listInstructions.mockResolvedValue([{ id: 'instruction-1', instruction: 'No inventes promociones.', active: true }]);
+
+    const listed = await request(app)
+      .get('/api/crm/dashboard/training')
+      .set('Authorization', `Bearer ${token}`);
+    const removed = await request(app)
+      .delete('/api/crm/dashboard/instructions/instruction-1')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(listed.status).toBe(200);
+    expect(listed.body.instructions[0].instruction).toBe('No inventes promociones.');
+    expect(training.listInstructions).toHaveBeenCalledWith('tenant-1');
+    expect(removed.status).toBe(200);
+    expect(training.deactivateInstruction).toHaveBeenCalledWith('tenant-1', 'instruction-1');
   });
 });

@@ -1,6 +1,12 @@
 jest.mock('axios', () => ({ get: jest.fn(), post: jest.fn() }));
 jest.mock('../db', () => ({ query: jest.fn() }));
-jest.mock('../ai/training', () => ({ getReviewReplies: jest.fn(), addTrainingData: jest.fn() }));
+jest.mock('../ai/training', () => ({
+  getReviewReplies: jest.fn(),
+  addTrainingData: jest.fn(),
+  listInstructions: jest.fn(),
+  addInstruction: jest.fn(),
+  deactivateInstruction: jest.fn()
+}));
 jest.mock('../ai/learning', () => ({
   getLearningOverview: jest.fn(),
   addVocab: jest.fn(),
@@ -43,5 +49,13 @@ describe('Telegram supervised training commands', () => {
 
     expect(query).not.toHaveBeenCalled();
     expect(training.addTrainingData).not.toHaveBeenCalled();
+  });
+
+  test('stores a behavior instruction from the configured admin chat', async () => {
+    await bot.handleCommand('12345', '/instruccion No ofrezcas descuento sin verificar la promoción activa.', 'Admin');
+
+    expect(training.addInstruction).toHaveBeenCalledWith(
+      'tenant-1', 'No ofrezcas descuento sin verificar la promoción activa.'
+    );
   });
 });

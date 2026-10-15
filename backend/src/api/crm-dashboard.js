@@ -236,9 +236,33 @@ router.get('/dashboard/review', requireDashboardAuth, async (req, res) => {
 
 router.get('/dashboard/training', requireDashboardAuth, async (req, res) => {
     try {
-        res.json({ items: await training.listTrainingData(req.dashboardUser.tenantId) });
+        const tenantId = req.dashboardUser.tenantId;
+        const [items, instructions] = await Promise.all([
+            training.listTrainingData(tenantId),
+            training.listInstructions(tenantId)
+        ]);
+        res.json({ items, instructions });
     } catch (error) {
         res.status(500).json({ error: 'No se pudo cargar el entrenamiento' });
+    }
+});
+
+router.post('/dashboard/instructions', requireDashboardAuth, async (req, res) => {
+    try {
+        const instruction = await training.addInstruction(req.dashboardUser.tenantId, req.body?.instruction);
+        res.status(201).json({ instruction });
+    } catch (error) {
+        const invalid = error.message.startsWith('La instrucción debe tener');
+        res.status(invalid ? 400 : 500).json({ error: invalid ? error.message : 'No se pudo guardar la instrucción' });
+    }
+});
+
+router.delete('/dashboard/instructions/:id', requireDashboardAuth, async (req, res) => {
+    try {
+        const deactivated = await training.deactivateInstruction(req.dashboardUser.tenantId, req.params.id);
+        res.status(deactivated ? 200 : 404).json({ deactivated });
+    } catch (error) {
+        res.status(500).json({ error: 'No se pudo desactivar la instrucción' });
     }
 });
 

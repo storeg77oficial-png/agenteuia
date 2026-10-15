@@ -243,6 +243,7 @@
           </section>
           <section class="panel"><div class="panel-head"><div><h2 class="panel-title">Respuestas guardadas</h2><p class="panel-note">Puedes retirar una regla sin borrar su historial.</p></div></div><div id="training-rules"></div></section>
           <section class="panel"><div class="panel-head"><div><h2 class="panel-title">Vocabulario aprendido</h2><p class="panel-note">Revisa las equivalencias propuestas antes de aprobarlas.</p></div></div><div id="learning-vocab"></div></section>
+          <section class="panel"><div class="panel-head"><div><h2 class="panel-title">Instrucciones de la tienda</h2><p class="panel-note">Reglas de atención aprobadas, subordinadas al catálogo y los datos reales.</p></div></div><form class="training-form" id="instruction-form"><label for="store-instruction">Instrucción permanente</label><textarea id="store-instruction" name="instruction" maxlength="500" required></textarea><button class="button button-primary" type="submit">Añadir instrucción</button></form><div id="training-instructions" style="margin-top:14px"></div></section>
         </div>
       </section>
       <div class="state" id="loading" hidden>Cargando información del CRM...</div>
@@ -417,6 +418,13 @@
       }).join('') : '<div class="empty">Todavía no hay vocabulario aprendido.</div>';
     }
 
+    function renderInstructions(items) {
+      $('#training-instructions').innerHTML = items.length ? items.map(item => {
+        const active = item.active === true || Number(item.active) === 1;
+        return `<article class="training-rule"><div class="training-rule-head"><span class="pill ${active ? '' : 'cancelled'}">${active ? 'Activa' : 'Inactiva'}</span></div><p>${escapeHtml(item.instruction)}</p>${active ? `<button class="small-button" type="button" data-deactivate-instruction="${escapeHtml(item.id)}">Desactivar</button>` : ''}</article>`;
+      }).join('') : '<div class="empty">Aún no hay instrucciones aprobadas.</div>';
+    }
+
     async function loadTraining() {
       const [review, rules, learned] = await Promise.all([
         api('/review'), api('/training'), api('/learning')
@@ -424,6 +432,7 @@
       renderTrainingReviews(review.reviews || []);
       renderTrainingRules(rules.items || []);
       renderLearnedVocabulary(learned.vocab || []);
+      renderInstructions(rules.instructions || []);
     }
 
     async function saveTraining(question, answer, category) {
@@ -501,6 +510,16 @@
         form.reset();
       } catch (error) { showToast(error.message); }
     });
+    $('#instruction-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      try {
+        await api('/instructions', { method: 'POST', body: JSON.stringify({ instruction: form.elements.namedItem('instruction').value }) });
+        form.reset();
+        showToast('Instrucción guardada.');
+        await loadTraining();
+      } catch (error) { showToast(error.message); }
+    });
     document.addEventListener('submit', async event => {
       const form = event.target.closest('[data-correction-form]');
       if (!form) return;
@@ -521,6 +540,15 @@
       if (pageButton && !pageButton.disabled) { currentPage = Number(pageButton.dataset.page); loadCustomers().catch(error => showToast(error.message)); }
     });
     document.addEventListener('click', async event => {
+      const instructionButton = event.target.closest('[data-deactivate-instruction]');
+      if (instructionButton) {
+        try {
+          await api('/instructions/' + encodeURIComponent(instructionButton.dataset.deactivateInstruction), { method: 'DELETE' });
+          showToast('Instrucción desactivada.');
+          await loadTraining();
+        } catch (error) { showToast(error.message); }
+        return;
+      }
       const deactivateButton = event.target.closest('[data-deactivate-training]');
       if (deactivateButton) {
         try {

@@ -11,7 +11,9 @@ const { logger } = require('../utils/logger');
 async function getTrainingData(tenantId) {
   try {
     const result = await query(
-      'SELECT * FROM ai_training_data WHERE tenant_id = $1 AND active = true ORDER BY times_used DESC',
+      `SELECT * FROM ai_training_data
+       WHERE tenant_id = $1 AND active = true AND COALESCE(category, 'faq') <> 'instruction'
+       ORDER BY times_used DESC`,
       [tenantId]
     );
     return result.rows;
@@ -49,10 +51,33 @@ async function addTrainingData(tenantId, data) {
 async function listTrainingData(tenantId) {
   const result = await query(
     `SELECT id, category, question, answer, times_used, active, created_at
-     FROM ai_training_data WHERE tenant_id = $1 ORDER BY active DESC, updated_at DESC LIMIT 200`,
+     FROM ai_training_data WHERE tenant_id = $1 AND COALESCE(category, 'faq') <> 'instruction'
+     ORDER BY active DESC, updated_at DESC LIMIT 200`,
     [tenantId]
   );
   return result.rows;
+}
+
+async function listInstructions(tenantId) {
+  const result = await query(
+    `SELECT id, answer AS instruction, active, created_at
+     FROM ai_training_data WHERE tenant_id = $1 AND category = 'instruction'
+     ORDER BY active DESC, created_at DESC LIMIT 100`,
+    [tenantId]
+  );
+  return result.rows;
+}
+
+async function addInstruction(tenantId, instruction) {
+  const text = String(instruction || '').trim();
+  if (text.length < 5 || text.length > 500) {
+    throw new Error('La instrucción debe tener entre 5 y 500 caracteres.');
+  }
+  return addTrainingData(tenantId, {
+    category: 'instruction',
+    question: 'Instrucción aprobada por la tienda',
+    answer: text
+  });
 }
 
 async function getReviewReplies(tenantId, limit = 10, messageId = null) {
@@ -80,7 +105,16 @@ async function getReviewReplies(tenantId, limit = 10, messageId = null) {
 async function deactivateTrainingData(tenantId, id) {
   const result = await query(
     `UPDATE ai_training_data SET active = false, updated_at = NOW()
-     WHERE tenant_id = $1 AND id = $2 RETURNING id`,
+     WHERE tenant_id = $1 AND id = $2 AND COALESCE(category, 'faq') <> 'instruction' RETURNING id`,
+    [tenantId, id]
+  );
+  return result.rowCount > 0;
+}
+
+async function deactivateInstruction(tenantId, id) {
+  const result = await query(
+    `UPDATE ai_training_data SET active = false, updated_at = NOW()
+     WHERE tenant_id = $1 AND id = $2 AND category = 'instruction' RETURNING id`,
     [tenantId, id]
   );
   return result.rowCount > 0;
@@ -134,6 +168,6 @@ async function bulkImport(tenantId, items) {
 }
 
 module.exports = {
-  getTrainingData, listTrainingData, getReviewReplies, addTrainingData, updateTrainingData,
-  deactivateTrainingData, incrementUsage, bulkImport
+  getTrainingData, listTrainingData, listInstructions, addInstruction, getReviewReplies, addTrainingData, updateTrainingData,
+  deactivateTrainingData, deactivateInstruction, incrementUsage, bulkImport
 };

@@ -1,7 +1,7 @@
 jest.mock('../db/index', () => ({ query: jest.fn() }));
 
 const { query } = require('../db/index');
-const { addTrainingData, getReviewReplies, deactivateTrainingData } = require('./training');
+const { getTrainingData, addTrainingData, addInstruction, getReviewReplies, deactivateTrainingData, deactivateInstruction } = require('./training');
 
 describe('supervised AI training data', () => {
   beforeEach(() => jest.clearAllMocks());
@@ -21,6 +21,24 @@ describe('supervised AI training data', () => {
 
     expect(query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO ai_training_data'), [
       'tenant-1', 'correction', '¿Qué horarios tienen?', 'Lunes a sábado.'
+    ]);
+  });
+
+  test('keeps instructions out of FAQ answer matching', async () => {
+    query.mockResolvedValue({ rows: [] });
+
+    await getTrainingData('tenant-1');
+
+    expect(query.mock.calls[0][0]).toContain("COALESCE(category, 'faq') <> 'instruction'");
+  });
+
+  test('stores a validated behavior instruction in its own category', async () => {
+    query.mockResolvedValue({ rows: [{ id: 'instruction-1' }] });
+
+    await addInstruction('tenant-1', '  No inventes promociones.  ');
+
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO ai_training_data'), [
+      'tenant-1', 'instruction', 'Instrucción aprobada por la tienda', 'No inventes promociones.'
     ]);
   });
 
@@ -45,5 +63,12 @@ describe('supervised AI training data', () => {
 
     await expect(deactivateTrainingData('tenant-1', 'rule-1')).resolves.toBe(true);
     expect(query).toHaveBeenCalledWith(expect.stringContaining('WHERE tenant_id = $1 AND id = $2'), ['tenant-1', 'rule-1']);
+  });
+
+  test('deactivates only behavior instructions in the instruction operation', async () => {
+    query.mockResolvedValue({ rowCount: 1 });
+
+    await expect(deactivateInstruction('tenant-1', 'instruction-1')).resolves.toBe(true);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining("category = 'instruction'"), ['tenant-1', 'instruction-1']);
   });
 });

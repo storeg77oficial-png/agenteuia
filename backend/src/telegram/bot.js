@@ -74,7 +74,7 @@ async function handleCommand(chat, text, firstName) {
     const command = parts[0].split('@')[0].toLowerCase();
     const args = parts.slice(1);
 
-    if (['/errores', '/entrenar', '/corregir', '/vocabulario', '/palabra', '/aprobar_palabra', '/rechazar_palabra'].includes(command)) {
+    if (['/errores', '/entrenar', '/corregir', '/vocabulario', '/palabra', '/aprobar_palabra', '/rechazar_palabra', '/reglas', '/instruccion', '/quitar_regla'].includes(command)) {
         if (!chatId || String(chat) !== String(chatId)) {
             await sendMessage(chat, 'Este chat no está autorizado para administrar el entrenamiento.');
             return;
@@ -183,6 +183,29 @@ async function handleTrainingCommand(chat, command, input) {
             return;
         }
 
+        if (command === '/reglas') {
+            const instructions = (await training.listInstructions(tenantId)).filter(item => item.active === true || Number(item.active) === 1).slice(0, 10);
+            const list = instructions.map(item => `ID: ${item.id}\n${item.instruction}`).join('\n\n');
+            await sendMessage(chat, list ? `Instrucciones activas:\n\n${list}\n\nPara retirar: /quitar_regla ID` : 'No hay instrucciones activas.');
+            return;
+        }
+
+        if (command === '/instruccion') {
+            if (input.trim().length < 5) {
+                await sendMessage(chat, 'Uso: /instruccion texto claro de la regla (máximo 500 caracteres)');
+                return;
+            }
+            await training.addInstruction(tenantId, input);
+            await sendMessage(chat, 'Instrucción guardada. Se aplicará sin contradecir los datos reales del catálogo.');
+            return;
+        }
+
+        if (command === '/quitar_regla') {
+            const removed = await training.deactivateInstruction(tenantId, input.trim());
+            await sendMessage(chat, removed ? 'Instrucción desactivada.' : 'No encontré esa instrucción.');
+            return;
+        }
+
         if (command === '/entrenar') {
             if (values.length < 2) {
                 await sendMessage(chat, 'Uso: /entrenar pregunta frecuente | respuesta correcta');
@@ -235,6 +258,9 @@ function getHelpText() {
 /palabra término | tipo | valor — Enseñar una equivalencia
 /aprobar_palabra ID — Aprobar una equivalencia
 /rechazar_palabra ID — Rechazar una equivalencia
+/instruccion texto — Añadir regla aprobada
+/reglas — Ver instrucciones activas
+/quitar_regla ID — Desactivar una instrucción
 
 📱 *WhatsApp:*
 /enviar \[número\] \[mensaje\] — Enviar mensaje

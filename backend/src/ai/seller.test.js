@@ -9,7 +9,7 @@ jest.mock('./catalog', () => ({
   norm: value => String(value || '').toLowerCase()
 }));
 jest.mock('../shopify/sync', () => ({ refreshProductsLive: jest.fn() }));
-jest.mock('./training', () => ({ getTrainingData: jest.fn() }));
+jest.mock('./training', () => ({ getTrainingData: jest.fn(), listInstructions: jest.fn() }));
 jest.mock('./learning', () => ({
   getLearnedVocab: jest.fn(),
   applyLearnedVocab: jest.fn(message => message),
@@ -21,7 +21,7 @@ jest.mock('./learning', () => ({
 jest.mock('./llm', () => ({ isEnabled: jest.fn(() => false), chat: jest.fn() }));
 
 const { loadKnowledge, parseQuery, searchCatalog, relaxSearch, buildStoreSummary, getAvailableQualities } = require('./catalog');
-const { getTrainingData } = require('./training');
+const { getTrainingData, listInstructions } = require('./training');
 const learning = require('./learning');
 const llm = require('./llm');
 const { refreshProductsLive } = require('../shopify/sync');
@@ -60,6 +60,7 @@ describe('sales assistant catalog replies', () => {
     learning.getUsualSize.mockResolvedValue(null);
     learning.describeCustomer.mockResolvedValue(null);
     learning.getInsightsPrompt.mockResolvedValue(null);
+    listInstructions.mockResolvedValue([]);
     llm.isEnabled.mockReturnValue(false);
   });
 
@@ -117,6 +118,10 @@ describe('sales assistant catalog replies', () => {
     llm.isEnabled.mockReturnValue(true);
     llm.chat.mockResolvedValue('Claro, mira estas opciones');
     getTrainingData.mockResolvedValue([]);
+    listInstructions.mockResolvedValue([
+      { instruction: 'No inventes promociones.', active: true },
+      { instruction: 'Regla desactivada.', active: false }
+    ]);
     buildStoreSummary.mockReturnValue('resumen');
     learning.describeCustomer.mockResolvedValue('tallas habituales: camisetas talla S');
     learning.getInsightsPrompt.mockResolvedValue('APRENDIZAJE DE LA ÚLTIMA SEMANA');
@@ -129,6 +134,8 @@ describe('sales assistant catalog replies', () => {
     expect(result.text).toContain(result.catalogUrl);
     expect(system).toContain('MEMORIA DEL CLIENTE');
     expect(system).toContain('APRENDIZAJE DE LA ÚLTIMA SEMANA');
+    expect(system).toContain('No inventes promociones.');
+    expect(system).not.toContain('Regla desactivada.');
   });
 
   test('uses the size the customer usually asks for and says so', async () => {
