@@ -5,9 +5,36 @@ jest.mock('../db/redis', () => ({ cacheGet: jest.fn(), cacheSet: jest.fn() }));
 jest.mock('./seller', () => ({ handleSellerTurn: jest.fn() }));
 
 const { processWithAI } = require('./agent');
+const { handleSellerTurn } = require('./seller');
 
 const tenant = { id: 'tenant-1', business_name: 'STORE SG MEDELLÍN' };
 const newSession = () => ({ state: 'new', context: {}, messageCount: 0 });
+
+describe('conversation loop protection', () => {
+  const unsure = { text: '¿Qué talla buscas?', intent: 'product_search', confidence: 0.8, state: 'browsing', context: {}, transferToHuman: false };
+  const sessionWith = lastReply => ({
+    state: 'browsing', messageCount: 3,
+    context: { history: [{ role: 'user', content: 'Camiseta Nike' }, { role: 'assistant', content: lastReply }] }
+  });
+
+  test('hands over to a person instead of repeating the same unsure answer', async () => {
+    handleSellerTurn.mockResolvedValue(unsure);
+
+    const result = await processWithAI(tenant, { name: 'Ana' }, sessionWith('¿Qué talla buscas?'), 'Camiseta Nike', 'text');
+
+    expect(result.transferToHuman).toBe(true);
+    expect(result.text).toContain('siento estar repitiéndome');
+  });
+
+  test('keeps answering when the reply is not a repeat', async () => {
+    handleSellerTurn.mockResolvedValue(unsure);
+
+    const result = await processWithAI(tenant, { name: 'Ana' }, sessionWith('Otra respuesta'), 'Camiseta Nike', 'text');
+
+    expect(result.transferToHuman).toBe(false);
+    expect(result.text).toBe('¿Qué talla buscas?');
+  });
+});
 
 describe('welcome greeting', () => {
   afterEach(() => jest.useRealTimers());

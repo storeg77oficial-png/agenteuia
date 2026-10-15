@@ -201,6 +201,50 @@ describe('sales assistant catalog replies', () => {
     expect(answer.context.pendingOffer).toBeNull();
   });
 
+  test('"olvida eso" clears the previous search instead of searching for those words', async () => {
+    const stale = { context: { lastFilters: filters({ brands: ['nike'], sizes: ['9'] }) } };
+
+    const result = await handleSellerTurn(tenant, customer, stale, 'Olvida eso');
+
+    expect(result.text).toContain('empezamos de nuevo');
+    expect(result.context.lastFilters).toBeNull();
+    expect(searchCatalog).not.toHaveBeenCalled();
+  });
+
+  test('"olvida eso" keeps whatever new request comes in the same message', async () => {
+    parseQuery.mockReturnValue(filters());
+
+    const result = await handleSellerTurn(tenant, customer, session, 'Olvida eso, busco camisetas Nike');
+
+    expect(parseQuery.mock.calls.pop()[1]).toBe('busco camisetas nike');
+    expect(searchCatalog).toHaveBeenCalled();
+    expect(result.text).toContain('https://');
+  });
+
+  test('apologizes and restarts when the customer says the bot is lost, then hands over if it repeats', async () => {
+    const first = await handleSellerTurn(tenant, customer, session, 'Estas alucinando');
+    expect(first.text).toContain('Tienes razón');
+    expect(first.transferToHuman).toBe(false);
+    expect(first.context.lastFilters).toBeNull();
+    expect(first.context.confusionCount).toBe(1);
+
+    const second = await handleSellerTurn(tenant, customer, { context: first.context }, 'no entiendes nada');
+    expect(second.transferToHuman).toBe(true);
+    expect(searchCatalog).not.toHaveBeenCalled();
+  });
+
+  test('"todos los tenis nike" shows the whole catalog without asking or inheriting a size', async () => {
+    learning.getUsualSize.mockResolvedValue('9');
+    parseQuery.mockReturnValue(filters({
+      brands: ['nike'], categories: ['zapatos'], sizes: [], qualities: [], wantsAll: true
+    }));
+
+    const result = await handleSellerTurn(tenant, customer, session, 'Muéstrame todos los tenis nike');
+
+    expect(searchCatalog.mock.calls[0][1].sizes).toEqual([]);
+    expect(new URL(result.catalogUrl).searchParams.has('filter.v.option.talla')).toBe(false);
+  });
+
   test('a "no" to the offer moves on instead of repeating itself', async () => {
     parseQuery.mockReturnValue(filters({ categories: [], hasSignal: false, strongSignal: false }));
     const followUp = { context: { pendingOffer: 'allBrands', lastFilters: filters({ brands: ['nike'] }) } };

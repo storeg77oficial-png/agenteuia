@@ -4,6 +4,7 @@
 const crypto = require('crypto');
 const express = require('express');
 const { query } = require('../db');
+const { logEvent } = require('../analytics/events');
 const { findCustomer, createCustomer } = require('../crm/customers');
 const { getSession, setSession } = require('../db/localCache');
 const { processWithAI } = require('../ai/agent');
@@ -135,6 +136,11 @@ async function handleMessage(tenant, value, message) {
 
   const aiResponse = await processWithAI(tenant, customer, session, text, message.type, incoming.extras);
   const reply = aiResponse.text || '¿En qué te puedo ayudar?';
+
+  if (aiResponse.transferToHuman) {
+    logger.warn('Human advisor requested', { customer: message.from, reason: aiResponse.reason || 'conversation stuck' });
+    await logEvent(tenant.id, customer.id, 'human_handoff', { reason: aiResponse.reason || null });
+  }
 
   // Send first so a DB failure never blocks the reply
   let sentAsVoice = false;

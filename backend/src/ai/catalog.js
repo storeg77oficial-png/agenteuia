@@ -39,7 +39,11 @@ const STOPWORDS = new Set(('de la el los las un una unos unas que tienen tiene t
   'barato barata baratos baratas economico economica nuevo nueva nuevos nuevas otra otro otros otras ' +
   'gracias ok vale claro comprar comprarlo comprarla compro pedir ordenar separar separame apartar llevar llevo ' +
   'cual cuales precio tienes disponibilidad todas toda marca marcas preferencia mejor calidad calidades ' +
-  'dos ambas ambos igual importa cualquiera cualquier sea ' + FILLER_WORDS.join(' ')).split(' '));
+  'dos ambas ambos igual importa cualquiera cualquier sea todos todo todito eso esa ese esto olvida olvidalo olvidalos ' +
+  'entiendes entendiste alucinando alucina completo catalogo estas eres ' + FILLER_WORDS.join(' ')).split(' '));
+
+// "todos los tenis nike": the customer wants the whole catalog, so earlier size/quality filters must not apply
+const WANTS_ALL_PATTERN = /\b(?:todos|todas)\s+(?:los|las)\b|\bcatalogo\s+completo\b|\btodo\s+(?:el\s+catalogo|lo\s+que\s+(?:tienen|tiene|tienes|manejan|hay))\b/g;
 
 // "las dos", "ambas", "me da igual": the customer accepts any quality
 const ANY_QUALITY_PATTERN = /\b(?:las|los)\s+(?:dos|2)\b|\bambas\b|\bambos\b|\bcualquier(?:a)?\s+calidad\b|\bcalidad\s+(?:da\s+igual|no\s+importa)\b|\bda\s+igual\b|\bno\s+importa\b|\bla\s+que\s+sea\b|\bcualquiera\b/g;
@@ -195,7 +199,7 @@ function parseQuery(knowledge, message) {
   let text = ` ${normalizeSlang(message)} `;
   const parsed = {
     brands: [], categories: [], sizes: [], colors: [], qualities: [], genders: [], terms: [],
-    allBrands: false, anyQuality: false, min: null, max: null
+    allBrands: false, anyQuality: false, wantsAll: false, min: null, max: null
   };
 
   const price = parsePrice(text.trim());
@@ -218,6 +222,12 @@ function parseQuery(knowledge, message) {
 
   parsed.allBrands = /\b(?:todas?\s+las\s+marcas|todas?\s+marcas|cualquier(?:a)?\s+marca|sin\s+preferencia(?:\s+de)?\s+marca)\b/.test(text);
   if (parsed.allBrands) text = text.replace(/\b(?:todas?\s+las\s+marcas|todas?\s+marcas|cualquier(?:a)?\s+marca|sin\s+preferencia(?:\s+de)?\s+marca)\b/g, ' ');
+
+  WANTS_ALL_PATTERN.lastIndex = 0;
+  if (WANTS_ALL_PATTERN.test(text)) {
+    parsed.wantsAll = true;
+    text = text.replace(WANTS_ALL_PATTERN, ' ');
+  }
 
   for (const [quality, pattern] of QUALITY_PATTERNS) {
     pattern.lastIndex = 0;

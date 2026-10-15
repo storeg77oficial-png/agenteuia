@@ -153,7 +153,11 @@ const INTENT_PATTERNS = {
   warranty: /\b(garantia|cambio|cambiar|devolucion|devolver|se rompio|se daño|se dano|defecto|defectuoso|talla equivocada|no me quedo|me quedo grande|me quedo pequeno|me quedo chico)\b/,
   complaint: /\b(reclamo|queja|estafa|estafadores|pesimo|pesima|mal servicio|mala atencion|no me ha llegado|nunca llego|no responden|no contestan|me robaron|inconforme)\b/,
   greeting: /^((hola|holi|holis|buenas|buenos dias|buenas tardes|buenas noches|quiubo|quihubo|qui hubo|que hubo|que mas|hey|ey|alo|saludos|que tal|parce|parcero|mor|amor|mi amor)\s?)+$/,
-  thanks: /^(gracias|mil gracias|listo gracias|ok gracias|dale gracias|muchas gracias|gracias parce|chao|adios|hasta luego|nos vemos)/
+  thanks: /^(gracias|mil gracias|listo gracias|ok gracias|dale gracias|muchas gracias|gracias parce|chao|adios|hasta luego|nos vemos)/,
+  // "olvida eso", "empecemos de nuevo": drop the previous search
+  reset: /\b(?:olvida(?:lo|la)?(?: eso| todo)?|empecemos de nuevo|empezar de nuevo|empecemos otra vez|desde cero|nueva busqueda|borra todo|reinicia|otra cosa)\b/,
+  // The customer says the bot is not understanding
+  confusion: /\b(?:alucin\w*|no entiendes|no me entiendes|no entendiste|no me entendiste|no estas entendiendo|estas mal|no es lo que (?:te )?pedi|eso no es lo que|no sirves|inutil|estupid[oa])\b/
 };
 
 // Compact glossary for the LLM so it reads Colombian chat correctly

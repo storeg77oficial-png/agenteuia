@@ -8,7 +8,7 @@ const { refreshProductsLive } = require('../shopify/sync');
 const { getTrainingData } = require('./training');
 const learning = require('./learning');
 const llm = require('./llm');
-const { GLOSSARY, normalizeSlang } = require('./colombian');
+const { GLOSSARY, normalizeSlang, INTENT_PATTERNS: P } = require('./colombian');
 
 const STORE_URL = (process.env.STORE_PUBLIC_URL || 'https://storesgmedellin.co').replace(/\/+$/, '');
 const money = n => `$${Math.round(n).toLocaleString('es-CO')}`;
@@ -58,7 +58,7 @@ function mergeWithPrevious(parsed, last) {
   const dimensions = ['brands', 'categories', 'sizes', 'colors', 'qualities', 'genders'];
   const changedCategory = parsed.categories.length && last.categories?.length &&
     parsed.categories.join('|') !== last.categories.join('|');
-  const previous = parsed.hasSignal && changedCategory ? {} : last;
+  const previous = parsed.wantsAll || (parsed.hasSignal && changedCategory) ? {} : last;
   const merged = { ...parsed };
 
   for (const dimension of dimensions) {
@@ -82,7 +82,7 @@ const SIZE_REQUIRED_CATEGORIES = new Set([
 ]);
 
 function missingFilterQuestion(parsed, knowledge) {
-  if (!parsed.categories.length) return null;
+  if (!parsed.categories.length || parsed.wantsAll) return null;
   if (!parsed.sizes.length && parsed.categories.some(category => SIZE_REQUIRED_CATEGORIES.has(category))) {
     if (parsed.categories.includes('zapatos') && !parsed.brands.length && !parsed.allBrands) {
       return '¿Qué talla buscas y tienes alguna marca preferida o quieres ver todas?';
@@ -231,17 +231,47 @@ function mergeDuplicates(matches) {
 
 const YES_REPLY = /^(?:si|sii+|dale|listo|claro|ok|okey|de una|hagale|obvio|bueno|porfa|por favor)(?: (?:si|por favor|porfa|gracias|dale|claro))?$/;
 const NO_REPLY = /^(?:no|nop|nel|no gracias|nada|no por ahora|asi esta bien)$/;
-const ctx = (filters, extra = {}) => ({ lastFilters: saveFilters(filters), pendingOffer: null, ...extra });
+const ctx = (filters, extra = {}) => ({ lastFilters: filters ? saveFilters(filters) : null, pendingOffer: null, confusionCount: 0, ...extra });
 
 async function handleSellerTurn(tenant, customer, session, message, extras = {}) {
   const knowledge = await loadKnowledge(tenant.id);
+  const spoken = normalizeSlang(message);
+  let lastFilters = session.context?.lastFilters;
+
+  // The customer says the bot is lost: apologize, forget the search and, if it repeats, hand over to a person
+  if (P.confusion.test(spoken)) {
+    const count = (session.context?.confusionCount || 0) + 1;
+    return {
+      text: count >= 2
+        ? 'Disculpa que no esté logrando ayudarte bien 🙏 Ya le aviso a una asesora del equipo para que te escriba por aquí en un momento.'
+        : 'Tienes razón, disculpa 🙏 Empecemos de nuevo: cuéntame qué buscas (prenda, marca y talla) y te muestro lo que tenemos disponible. Si prefieres, te paso con una asesora.',
+      intent: 'product_search', confidence: 0.8, state: 'browsing',
+      context: { ...ctx(null), confusionCount: count, lastShown: [] },
+      transferToHuman: count >= 2
+    };
+  }
+
+  // "Olvida eso": drop the previous search, keeping anything new said in the same message
+  if (P.reset.test(spoken)) {
+    lastFilters = null;
+    const remainder = spoken.replace(P.reset, ' ').trim();
+    const probe = remainder ? parseQuery(knowledge, remainder) : null;
+    if (!probe || (!probe.categories.length && !probe.brands.length && !probe.terms.length)) {
+      return {
+        text: 'Listo, empezamos de nuevo 😊 ¿Qué te gustaría ver?',
+        intent: 'product_search', confidence: 0.8, state: 'browsing',
+        context: { ...ctx(null), lastShown: [] }, transferToHuman: false
+      };
+    }
+    message = remainder;
+  }
+
   const vocab = await learning.getLearnedVocab(tenant.id);
   const fresh = parseQuery(knowledge, learning.applyLearnedVocab(message, vocab));
-  let parsed = mergeWithPrevious(fresh, session.context?.lastFilters);
+  let parsed = mergeWithPrevious(fresh, lastFilters);
 
   // A short "sí" / "no" answers the offer the bot made last turn instead of repeating the previous reply
   if (session.context?.pendingOffer === 'allBrands') {
-    const spoken = normalizeSlang(message);
     if (YES_REPLY.test(spoken)) parsed = { ...parsed, brands: [], allBrands: true };
     else if (NO_REPLY.test(spoken)) {
       return {
@@ -254,7 +284,7 @@ async function handleSellerTurn(tenant, customer, session, message, extras = {})
 
   // Known customer, no size given: use the size they usually ask for and say so
   let assumedSize = null;
-  if (!parsed.sizes.length && parsed.categories.length === 1 && SIZE_REQUIRED_CATEGORIES.has(parsed.categories[0])) {
+  if (!parsed.wantsAll && !parsed.sizes.length && parsed.categories.length === 1 && SIZE_REQUIRED_CATEGORIES.has(parsed.categories[0])) {
     assumedSize = await learning.getUsualSize(tenant.id, customer?.id, parsed.categories[0]);
     if (assumedSize) parsed = { ...parsed, sizes: [assumedSize] };
   }

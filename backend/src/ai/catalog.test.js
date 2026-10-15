@@ -114,6 +114,15 @@ describe('catalog sales filters', () => {
     expect(junkWord.matches.map(match => match.id)).toEqual([1]);
   });
 
+  test('understands "todos los tenis nike" as the whole catalog and ignores conversational words', async () => {
+    const knowledge = await loadKnowledge('tenant-1');
+    const all = parseQuery(knowledge, 'Muéstrame todos los tenis nike que tienes');
+
+    expect(all).toMatchObject({ wantsAll: true, categories: ['zapatos'], brands: ['nike'], terms: [], sizes: [] });
+    expect(parseQuery(knowledge, 'Olvida eso').terms).toEqual([]);
+    expect(parseQuery(knowledge, 'Estas alucinando').terms).toEqual([]);
+  });
+
   test('relaxSearch never swaps the brand or the garment', async () => {
     const result = await relaxSearch('tenant-1', {
       brands: ['gucci'], categories: ['camisetas'], sizes: [], colors: [], terms: [],

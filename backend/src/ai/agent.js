@@ -40,7 +40,22 @@ const SELLER_INTENTS = [INTENTS.PRODUCT_SEARCH, INTENTS.PRODUCT_DETAIL, INTENTS.
 
 // Keep the last turns so the seller understands follow-ups like "y en talla M?"
 function withHistory(response, session, message) {
-  const history = [...(session.context?.history || []),
+  const previous = session.context?.history || [];
+  const lastReply = [...previous].reverse().find(turn => turn.role === 'assistant')?.content;
+
+  // Never send the same unsure answer twice in a row: hand the customer to a person instead of looping
+  const stuck = response.text && response.text === lastReply && !response.transferToHuman &&
+    [INTENTS.PRODUCT_SEARCH, INTENTS.UNKNOWN].includes(response.intent) && response.confidence < 0.85;
+  if (stuck) {
+    response = {
+      ...response,
+      text: 'Disculpa, siento estar repitiéndome 🙏 Ya le aviso a una asesora del equipo para que te escriba por aquí en un momento.',
+      transferToHuman: true,
+      reason: 'Repeated identical reply'
+    };
+  }
+
+  const history = [...previous,
     { role: 'user', content: message },
     { role: 'assistant', content: response.text || '' }].slice(-8);
   return { ...response, context: { ...(response.context || {}), history } };
