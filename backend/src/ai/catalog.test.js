@@ -1,7 +1,7 @@
 jest.mock('../db', () => ({ query: jest.fn() }));
 
 const { query } = require('../db');
-const { invalidateKnowledge, loadKnowledge, parseQuery, searchCatalog } = require('./catalog');
+const { invalidateKnowledge, loadKnowledge, parseQuery, searchCatalog, relaxSearch } = require('./catalog');
 
 function product(id, title, brand, category, size, subcategory = '', tags = []) {
   return {
@@ -87,5 +87,39 @@ describe('catalog sales filters', () => {
     });
 
     expect(result.matches.map(match => match.id)).toEqual([7]);
+  });
+
+  test('understands "las dos" as any quality and never as a search word', async () => {
+    const knowledge = await loadKnowledge('tenant-1');
+    const reply = parseQuery(knowledge, 'LAS DOS');
+
+    expect(reply).toMatchObject({ anyQuality: true, qualities: [], terms: [], hasSignal: true });
+    expect(parseQuery(knowledge, 'me da igual').anyQuality).toBe(true);
+    expect(parseQuery(knowledge, 'premium las dos').anyQuality).toBe(false);
+  });
+
+  test('relaxSearch finds the closest real alternative and reports what it dropped', async () => {
+    const base = {
+      brands: ['nike'], categories: ['camisetas'], sizes: ['S'], colors: [], terms: [],
+      qualities: ['original'], genders: ['hombre'], min: null, max: null
+    };
+
+    const byQuality = await relaxSearch('tenant-1', base);
+    expect(byQuality.relaxed).toEqual(['calidad']);
+    expect(byQuality.matches.map(match => match.id)).toEqual([1]);
+    expect(byQuality.effective.qualities).toEqual([]);
+
+    const junkWord = await relaxSearch('tenant-1', { ...base, qualities: ['premium'], terms: ['dos'] });
+    expect(junkWord.relaxed).toEqual(['palabras extra']);
+    expect(junkWord.matches.map(match => match.id)).toEqual([1]);
+  });
+
+  test('relaxSearch never swaps the brand or the garment', async () => {
+    const result = await relaxSearch('tenant-1', {
+      brands: ['gucci'], categories: ['camisetas'], sizes: [], colors: [], terms: [],
+      qualities: [], genders: [], min: null, max: null
+    });
+
+    expect(result).toBeNull();
   });
 });

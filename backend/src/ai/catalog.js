@@ -38,7 +38,11 @@ const STOPWORDS = new Set(('de la el los las un una unos unas que tienen tiene t
   'quisiera quería queria podrias puedes pueden dame dime saber si no al del lo le se es son ya aun todavia ' +
   'barato barata baratos baratas economico economica nuevo nueva nuevos nuevas otra otro otros otras ' +
   'gracias ok vale claro comprar comprarlo comprarla compro pedir ordenar separar separame apartar llevar llevo ' +
-  'cual cuales precio tienes disponibilidad todas toda marca marcas preferencia mejor calidad calidades ' + FILLER_WORDS.join(' ')).split(' '));
+  'cual cuales precio tienes disponibilidad todas toda marca marcas preferencia mejor calidad calidades ' +
+  'dos ambas ambos igual importa cualquiera cualquier sea ' + FILLER_WORDS.join(' ')).split(' '));
+
+// "las dos", "ambas", "me da igual": the customer accepts any quality
+const ANY_QUALITY_PATTERN = /\b(?:las|los)\s+(?:dos|2)\b|\bambas\b|\bambos\b|\bcualquier(?:a)?\s+calidad\b|\bcalidad\s+(?:da\s+igual|no\s+importa)\b|\bda\s+igual\b|\bno\s+importa\b|\bla\s+que\s+sea\b|\bcualquiera\b/g;
 
 function norm(s) {
   return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -191,7 +195,7 @@ function parseQuery(knowledge, message) {
   let text = ` ${normalizeSlang(message)} `;
   const parsed = {
     brands: [], categories: [], sizes: [], colors: [], qualities: [], genders: [], terms: [],
-    allBrands: false, min: null, max: null
+    allBrands: false, anyQuality: false, min: null, max: null
   };
 
   const price = parsePrice(text.trim());
@@ -221,6 +225,11 @@ function parseQuery(knowledge, message) {
       parsed.qualities.push(quality);
       text = text.replace(pattern, ' ');
     }
+  }
+  ANY_QUALITY_PATTERN.lastIndex = 0;
+  if (!parsed.qualities.length && ANY_QUALITY_PATTERN.test(text)) {
+    parsed.anyQuality = true;
+    text = text.replace(ANY_QUALITY_PATTERN, ' ');
   }
   for (const [gender, pattern] of GENDER_PATTERNS) {
     pattern.lastIndex = 0;
@@ -279,7 +288,7 @@ function parseQuery(knowledge, message) {
 
   parsed.hasSignal = !!(parsed.brands.length || parsed.categories.length || parsed.terms.length ||
     parsed.colors.length || parsed.sizes.length || parsed.qualities.length || parsed.genders.length ||
-    parsed.allBrands || parsed.max || parsed.min);
+    parsed.allBrands || parsed.anyQuality || parsed.max || parsed.min);
   parsed.strongSignal = !!(parsed.brands.length || parsed.categories.length);
   return parsed;
 }
@@ -354,6 +363,41 @@ async function searchCatalog(tenantId, parsed, limit = 12) {
   return { matches: matches.slice(0, limit), total: matches.length, relaxed: [], knowledge };
 }
 
+// Least valuable constraint first; the caller must tell the customer what was dropped
+const RELAX_STEPS = [
+  ['palabras extra', p => !!p.terms.length, p => ({ ...p, terms: [] })],
+  ['calidad', p => !!p.qualities?.length, p => ({ ...p, qualities: [] })],
+  ['género', p => !!p.genders?.length, p => ({ ...p, genders: [] })],
+  ['color', p => !!p.colors.length, p => ({ ...p, colors: [] })],
+  ['presupuesto', p => !!(p.min || p.max), p => ({ ...p, min: null, max: null })],
+  ['talla', p => !!p.sizes.length, p => ({ ...p, sizes: [] })]
+];
+
+/** Used only when the strict search is empty: finds the closest real alternative and reports what was relaxed. */
+async function relaxSearch(tenantId, parsed) {
+  const attempt = async (effective, relaxed) => {
+    const result = await searchCatalog(tenantId, effective);
+    return result.matches.length ? { ...result, relaxed, effective } : null;
+  };
+
+  for (const [label, applies, relax] of RELAX_STEPS) {
+    if (!applies(parsed)) continue;
+    const hit = await attempt(relax(parsed), [label]);
+    if (hit) return hit;
+  }
+
+  let current = parsed;
+  const labels = [];
+  for (const [label, applies, relax] of RELAX_STEPS) {
+    if (!applies(current)) continue;
+    current = relax(current);
+    labels.push(label);
+    const hit = await attempt(current, [...labels]);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 function getAvailableQualities(knowledge, parsed) {
   const products = knowledge.products.filter(product => product.inStock &&
     (!parsed.categories.length || parsed.categories.some(category => matchesCategory(product, category))) &&
@@ -372,5 +416,5 @@ function buildStoreSummary(knowledge) {
 }
 
 module.exports = {
-  loadKnowledge, invalidateKnowledge, parseQuery, searchCatalog, buildStoreSummary, getAvailableQualities, sizeMatches, stem, norm
+  loadKnowledge, invalidateKnowledge, parseQuery, searchCatalog, relaxSearch, buildStoreSummary, getAvailableQualities, sizeMatches, stem, norm
 };

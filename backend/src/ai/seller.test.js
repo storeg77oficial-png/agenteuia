@@ -2,6 +2,7 @@ jest.mock('./catalog', () => ({
   loadKnowledge: jest.fn(),
   parseQuery: jest.fn(),
   searchCatalog: jest.fn(),
+  relaxSearch: jest.fn(),
   buildStoreSummary: jest.fn(),
   getAvailableQualities: jest.fn(),
   sizeMatches: (requested, available) => String(available || '').split(/\s*(?:-|–|—|\/)\s*/).includes(String(requested)),
@@ -19,7 +20,7 @@ jest.mock('./learning', () => ({
 }));
 jest.mock('./llm', () => ({ isEnabled: jest.fn(() => false), chat: jest.fn() }));
 
-const { loadKnowledge, parseQuery, searchCatalog, buildStoreSummary, getAvailableQualities } = require('./catalog');
+const { loadKnowledge, parseQuery, searchCatalog, relaxSearch, buildStoreSummary, getAvailableQualities } = require('./catalog');
 const { getTrainingData } = require('./training');
 const learning = require('./learning');
 const llm = require('./llm');
@@ -53,6 +54,7 @@ describe('sales assistant catalog replies', () => {
     refreshProductsLive.mockResolvedValue(false);
     searchCatalog.mockResolvedValue({ matches: matches(), total: 17, relaxed: [], knowledge });
     getAvailableQualities.mockReturnValue([]);
+    relaxSearch.mockResolvedValue(null);
     learning.getLearnedVocab.mockResolvedValue(new Map());
     learning.applyLearnedVocab.mockImplementation(message => message);
     learning.getUsualSize.mockResolvedValue(null);
@@ -152,5 +154,70 @@ describe('sales assistant catalog replies', () => {
     expect(learning.observeTurn).toHaveBeenCalledWith(expect.objectContaining({
       tenantId: 'tenant-1', customerId: 'c1', exact: true
     }));
+  });
+
+  test('does not ask for the quality again after "las dos"', async () => {
+    getAvailableQualities.mockReturnValue(['original', 'premium']);
+    parseQuery.mockReturnValue(filters({ qualities: [], anyQuality: true }));
+
+    const result = await handleSellerTurn(tenant, customer, session, 'LAS DOS');
+
+    expect(result.text).not.toContain('¿Qué calidad buscas');
+    expect(searchCatalog).toHaveBeenCalled();
+    expect(result.context.lastFilters.anyQuality).toBe(true);
+  });
+
+  test('offers the closest real alternative and says what was relaxed', async () => {
+    parseQuery.mockReturnValue(filters({ brands: ['nike'], qualities: ['original'] }));
+    searchCatalog.mockResolvedValue({ matches: [], total: 0, relaxed: [], knowledge });
+    relaxSearch.mockResolvedValue({
+      matches: matches(), total: 1, relaxed: ['calidad'], knowledge, effective: filters({ brands: ['nike'], qualities: [] })
+    });
+
+    const result = await handleSellerTurn(tenant, customer, session, 'Camiseta Nike M original');
+
+    expect(result.text).toContain('No tengo');
+    expect(result.text).toContain('sin filtrar por calidad');
+    expect(new URL(result.catalogUrl).searchParams.get('q')).not.toContain('original');
+    expect(result.context.lastFilters.qualities).toEqual([]);
+    expect(learning.observeTurn).toHaveBeenCalledWith(expect.objectContaining({ exact: false }));
+  });
+
+  test('offers other brands when nothing exists and understands the "sí" that follows', async () => {
+    parseQuery.mockReturnValue(filters({ brands: ['nike'] }));
+    searchCatalog.mockResolvedValue({ matches: [], total: 0, relaxed: [], knowledge });
+
+    const offer = await handleSellerTurn(tenant, customer, session, 'Camiseta Nike M');
+    expect(offer.text).toContain('otras marcas');
+    expect(offer.context.pendingOffer).toBe('allBrands');
+
+    searchCatalog.mockResolvedValue({ matches: matches(), total: 17, relaxed: [], knowledge });
+    parseQuery.mockReturnValue(filters({ categories: [], sizes: [], qualities: [], hasSignal: false, strongSignal: false }));
+    const followUp = { context: { pendingOffer: 'allBrands', lastFilters: offer.context.lastFilters } };
+    const answer = await handleSellerTurn(tenant, customer, followUp, 'Si por favor');
+
+    expect(searchCatalog.mock.calls.pop()[1]).toMatchObject({ brands: [], allBrands: true });
+    expect(answer.text).toContain('https://');
+    expect(answer.context.pendingOffer).toBeNull();
+  });
+
+  test('a "no" to the offer moves on instead of repeating itself', async () => {
+    parseQuery.mockReturnValue(filters({ categories: [], hasSignal: false, strongSignal: false }));
+    const followUp = { context: { pendingOffer: 'allBrands', lastFilters: filters({ brands: ['nike'] }) } };
+
+    const result = await handleSellerTurn(tenant, customer, followUp, 'No gracias');
+
+    expect(result.text).toContain('¿Qué otra cosa te gustaría ver?');
+    expect(result.context.pendingOffer).toBeNull();
+    expect(searchCatalog).not.toHaveBeenCalled();
+  });
+
+  test('lists the products when no reliable link exists for the gender filter', async () => {
+    parseQuery.mockReturnValue(filters({ genders: ['hombre'] }));
+
+    const result = await handleSellerTurn(tenant, customer, session, 'Camisetas Nike hombre');
+
+    expect(result.text).toContain('Camiseta Nike Premium - $120.000');
+    expect(result.text).toContain('/products/camiseta-nike-premium');
   });
 });

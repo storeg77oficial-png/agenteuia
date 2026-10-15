@@ -288,14 +288,27 @@ async function handleIntent(tenant, customer, session, intent, message, context)
 
 // ─── Intent Handlers ───────────────────────────────────────────
 
+// Colombia is UTC-5 all year; the server runs in UTC
+function bogotaHour() {
+  return (new Date().getUTCHours() + 19) % 24;
+}
+
+function prettyBrand(name) {
+  return name.length > 3 && name === name.toUpperCase()
+    ? name.charAt(0) + name.slice(1).toLowerCase()
+    : name;
+}
+
 async function handleGreeting(tenant, customer, session) {
-  const hour = new Date().getHours();
+  const hour = bogotaHour();
   let greeting = hour < 12 ? 'Buenos días' : hour < 18 ? 'Buenas tardes' : 'Buenas noches';
   
   if (session.messageCount === 0) {
     const knowledge = await loadKnowledge(tenant.id);
-    const cats = [...knowledge.categories.values()].sort((a, b) => b.count - a.count).slice(0, 5).map(c => c.name);
-    const brands = [...knowledge.brands.values()].sort((a, b) => b.count - a.count).slice(0, 6).map(b => b.name);
+    const cats = [...knowledge.categories.values()]
+      .filter(c => c.name && !/^(otros?|sin categoria|general|varios)$/.test(normalizeSlang(c.name)))
+      .sort((a, b) => b.count - a.count).slice(0, 5).map(c => c.name);
+    const brands = [...knowledge.brands.values()].sort((a, b) => b.count - a.count).slice(0, 6).map(b => prettyBrand(b.name));
     return {
       text: `${greeting} ${customer.name && customer.name !== 'Cliente' ? customer.name : ''}! 👋 Bienvenido a *${tenant.business_name}*.\n\n` +
             (cats.length ? `Tenemos ${cats.join(', ')} y más, de marcas como ${brands.join(', ')}.\n\n` : '') +
