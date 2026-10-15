@@ -6,6 +6,7 @@ jest.mock('./seller', () => ({ handleSellerTurn: jest.fn() }));
 
 const { processWithAI } = require('./agent');
 const { handleSellerTurn } = require('./seller');
+const { getTrainingData } = require('./training');
 
 const tenant = { id: 'tenant-1', business_name: 'STORE SG MEDELLÍN' };
 const newSession = () => ({ state: 'new', context: {}, messageCount: 0 });
@@ -59,5 +60,19 @@ describe('welcome greeting', () => {
 
   test('greets without a name when the account has none', async () => {
     expect(await greetAt('2026-10-15T15:00:00Z', { name: 'Cliente' })).toMatch(/^Buenos días! 👋/);
+  });
+});
+
+describe('supervised FAQ learning', () => {
+  test('matches a short customer question to a corrected FAQ despite punctuation and filler words', async () => {
+    getTrainingData.mockResolvedValue([{
+      question: '¿Cuáles son los horarios?',
+      answer: 'Atendemos de lunes a sábado.'
+    }]);
+
+    const result = await processWithAI(tenant, { name: 'Ana' }, newSession(), 'Horarios?', 'text');
+
+    expect(result.text).toBe('Atendemos de lunes a sábado.');
+    expect(getTrainingData).toHaveBeenCalledWith('tenant-1');
   });
 });

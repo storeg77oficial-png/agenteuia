@@ -178,6 +178,9 @@ app.listen(PORT, () => {
   if (process.env.NODE_ENV !== 'test') {
     require('./shopify/sync').startAutoSync();
     require('./ai/learning').startDailyLearning();
+    if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID) {
+      require('./telegram/bot').startTelegramBot(process.env.TELEGRAM_BOT_TOKEN, process.env.TELEGRAM_CHAT_ID);
+    }
   }
 });
 

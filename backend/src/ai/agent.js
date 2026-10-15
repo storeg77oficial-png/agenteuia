@@ -37,6 +37,18 @@ const CAUTION_KEYWORDS = [
 ];
 
 const SELLER_INTENTS = [INTENTS.PRODUCT_SEARCH, INTENTS.PRODUCT_DETAIL, INTENTS.STOCK_CHECK, INTENTS.PRICING, INTENTS.UNKNOWN];
+const FAQ_STOPWORDS = new Set([
+  'a', 'al', 'como', 'cual', 'cuales', 'cuando', 'cuanto', 'cuantos', 'de', 'del', 'el', 'ella', 'en', 'es',
+  'esta', 'este', 'hay', 'la', 'las', 'lo', 'los', 'me', 'mi', 'mis', 'para', 'por', 'que', 'se', 'son',
+  'su', 'sus', 'te', 'tu', 'un', 'una', 'uno', 'unos', 'y'
+]);
+
+function faqWords(value) {
+  return new Set(normalizeSlang(String(value || ''))
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .split(/\s+/).filter(word => word.length > 2 && !FAQ_STOPWORDS.has(word)));
+}
 
 // Keep the last turns so the seller understands follow-ups like "y en talla M?"
 function withHistory(response, session, message) {
@@ -725,13 +737,14 @@ async function checkTrainingData(tenantId, message) {
     if (!trainingData || trainingData.length === 0) return null;
 
     // Simple keyword matching (can be enhanced with embeddings)
-    const msg = message.toLowerCase();
-    
+    const messageWords = faqWords(message);
     for (const item of trainingData) {
-      const questionWords = item.question.toLowerCase().split(' ');
-      const matchCount = questionWords.filter(word => msg.includes(word)).length;
-      
-      if (matchCount >= questionWords.length * 0.6) {
+      const questionWords = faqWords(item.question);
+      if (!questionWords.size) continue;
+      const matchCount = [...questionWords].filter(word => messageWords.has(word)).length;
+      const minimumMatches = questionWords.size === 1 ? 1 : Math.max(2, Math.ceil(questionWords.size * 0.5));
+
+      if (matchCount >= minimumMatches) {
         return item.answer;
       }
     }

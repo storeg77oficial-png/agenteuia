@@ -117,6 +117,19 @@
     .quality-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; margin-bottom: 15px; }
     .quality-number { margin-top: 13px; font: 800 27px Manrope, sans-serif; }
     .quality-copy { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+    .training-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; margin-top: 15px; }
+    .training-reviews { display: grid; gap: 12px; }
+    .review-card { padding: 16px; border: 1px solid var(--line); border-radius: 7px; background: white; }
+    .review-meta, .training-rule-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .review-card .message { margin: 8px 0 13px; }
+    .review-card label, .training-form label { display: block; margin: 9px 0 5px; color: var(--muted); font-size: 11px; font-weight: 700; }
+    .training-form { display: grid; gap: 6px; }
+    .training-form input, .training-form textarea, .training-form select, .review-card input, .review-card textarea { width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; background: white; color: var(--ink); }
+    .training-form textarea, .review-card textarea { min-height: 76px; resize: vertical; }
+    .training-form input:focus, .training-form textarea:focus, .training-form select:focus, .review-card input:focus, .review-card textarea:focus { outline: 2px solid #b1d4c6; border-color: var(--green); }
+    .training-rule { padding: 12px 0; border-top: 1px solid var(--line); }
+    .training-rule p { margin: 6px 0; color: var(--muted); font-size: 12px; white-space: pre-wrap; }
+    .training-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
     .notice { display: flex; justify-content: space-between; align-items: center; gap: 15px; padding: 15px 17px; border: 1px solid #eedfbe; border-radius: 7px; background: #fffaf0; color: #7d6335; font-size: 12px; }
     .notice strong { display: block; margin-bottom: 2px; color: #664d20; }
     .state { padding: 30px; color: var(--muted); text-align: center; }
@@ -140,13 +153,13 @@
     @media (max-width: 1050px) {
       .app { grid-template-columns: 205px minmax(0, 1fr); }
       .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .overview-grid, .two-col { grid-template-columns: 1fr; }
+      .overview-grid, .two-col, .training-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 680px) {
       .app { display: block; padding-bottom: 66px; }
       .sidebar { position: fixed; inset: auto 0 0; z-index: 4; width: 100%; height: 61px; padding: 0 8px; border-top: 1px solid var(--line); border-right: 0; }
       .brand, .nav-label, .sidebar-bottom { display: none; }
-      .nav { height: 100%; grid-template-columns: repeat(4, 1fr); align-items: stretch; gap: 2px; }
+      .nav { height: 100%; grid-template-columns: repeat(5, 1fr); align-items: stretch; gap: 2px; }
       .nav button { flex-direction: column; justify-content: center; gap: 1px; padding: 4px 2px; border-radius: 5px; font-size: 10px; }
       .nav-symbol { font-size: 15px; }
       .main { padding: 20px 14px 26px; }
@@ -176,6 +189,7 @@
         <button data-view="customers"><span class="nav-symbol">◎</span>Clientes</button>
         <button data-view="orders"><span class="nav-symbol">▤</span>Pedidos</button>
         <button data-view="quality"><span class="nav-symbol">↗</span>Calidad IA</button>
+        <button data-view="training"><span class="nav-symbol">✎</span>Aprender</button>
       </nav>
       <div class="sidebar-bottom"><div class="store-status"><span class="pulse"></span><span>Panel conectado</span></div><div class="sidebar-links"><a href="/settings">Canales</a><button id="logout">Cerrar sesión</button></div></div>
     </aside>
@@ -213,6 +227,23 @@
         <div class="quality-grid" id="quality-cards"></div>
         <section class="panel"><div class="panel-head"><div><h2 class="panel-title">Lectura de calidad</h2><p class="panel-note">La confianza se recopila en las respuestas nuevas del asistente.</p></div></div><div id="quality-detail"></div></section>
         <div class="notice" style="margin-top:15px"><div><strong>Histórico disponible</strong><span>Las conversaciones anteriores al registro de intención y confianza no incluyen estos indicadores.</span></div></div>
+      </section>
+      <section class="view" id="view-training">
+        <div class="section-head"><div><h2 class="panel-title">Revisar respuestas</h2><p class="panel-note">Corrige preguntas frecuentes; catálogo y existencias siguen sincronizados desde Shopify.</p></div><button class="button" id="refresh-training">Actualizar</button></div>
+        <div class="training-reviews" id="training-reviews"></div>
+        <div class="training-grid">
+          <section class="panel">
+            <div class="panel-head"><div><h2 class="panel-title">Enseñar una respuesta</h2><p class="panel-note">La IA la consultará para preguntas frecuentes similares.</p></div></div>
+            <form class="training-form" id="training-form">
+              <label for="training-category">Tipo</label><select id="training-category" name="category"><option value="faq">Pregunta frecuente</option><option value="correction">Corrección supervisada</option></select>
+              <label for="training-question">Pregunta del cliente</label><input id="training-question" name="question" maxlength="500" required>
+              <label for="training-answer">Respuesta aprobada</label><textarea id="training-answer" name="answer" maxlength="1500" required></textarea>
+              <button class="button button-primary" type="submit">Guardar respuesta</button>
+            </form>
+          </section>
+          <section class="panel"><div class="panel-head"><div><h2 class="panel-title">Respuestas guardadas</h2><p class="panel-note">Puedes retirar una regla sin borrar su historial.</p></div></div><div id="training-rules"></div></section>
+          <section class="panel"><div class="panel-head"><div><h2 class="panel-title">Vocabulario aprendido</h2><p class="panel-note">Revisa las equivalencias propuestas antes de aprobarlas.</p></div></div><div id="learning-vocab"></div></section>
+        </div>
       </section>
       <div class="state" id="loading" hidden>Cargando información del CRM...</div>
     </main>
@@ -362,6 +393,48 @@
       $('#orders-table').innerHTML = orderTable(result.orders);
     }
 
+    function renderTrainingReviews(reviews) {
+      $('#training-reviews').innerHTML = reviews.length ? reviews.map(review => {
+        const confidence = review.ai_confidence === null ? 'Sin score' : `${Math.round(Number(review.ai_confidence) * 100)}% confianza`;
+        return `<article class="review-card"><div class="review-meta"><strong>${escapeHtml(review.customer_name || 'Cliente')} · ${escapeHtml(review.customer_phone || '')}</strong><span class="muted">${escapeHtml(confidence)} · ${escapeHtml(formatDate(review.created_at))}</span></div><label>Pregunta asociada · verifica antes de guardar</label><div class="message">${escapeHtml(review.question || 'No se pudo asociar una pregunta; complétala abajo.')}</div><label>Respuesta de la IA</label><div class="message ai">${escapeHtml(review.response || '')}</div><form data-correction-form class="training-form"><label>Pregunta correcta</label><input name="question" maxlength="500" value="${escapeHtml(review.question || '')}" required><label>Respuesta aprobada</label><textarea name="answer" maxlength="1500" required></textarea><button class="button button-primary" type="submit">Guardar corrección</button></form></article>`;
+      }).join('') : '<div class="empty">No hay respuestas recientes para revisar.</div>';
+    }
+
+    function renderTrainingRules(items) {
+      $('#training-rules').innerHTML = items.length ? items.map(item => {
+        const active = item.active === true || Number(item.active) === 1;
+        return `<article class="training-rule"><div class="training-rule-head"><strong>${escapeHtml(item.question)}</strong><span class="pill ${active ? '' : 'cancelled'}">${active ? 'Activa' : 'Inactiva'}</span></div><p>${escapeHtml(item.answer)}</p><div class="training-actions"><span class="muted">${formatNumber(item.times_used)} usos</span>${active ? `<button class="small-button" type="button" data-deactivate-training="${escapeHtml(item.id)}">Desactivar</button>` : ''}</div></article>`;
+      }).join('') : '<div class="empty">Aún no hay respuestas guardadas.</div>';
+    }
+
+    function renderLearnedVocabulary(items) {
+      $('#learning-vocab').innerHTML = items.length ? items.map(item => {
+        const status = String(item.status || 'pending');
+        const actions = status === 'pending'
+          ? `<button class="small-button" type="button" data-vocab-id="${escapeHtml(item.id)}" data-vocab-status="approved">Aprobar</button><button class="small-button" type="button" data-vocab-id="${escapeHtml(item.id)}" data-vocab-status="rejected">Rechazar</button>`
+          : `<button class="small-button" type="button" data-vocab-id="${escapeHtml(item.id)}" data-vocab-status="${status === 'approved' ? 'rejected' : 'approved'}">${status === 'approved' ? 'Retirar' : 'Aprobar'}</button>`;
+        return `<article class="training-rule"><div class="training-rule-head"><strong>${escapeHtml(item.term)}</strong><span class="pill ${status === 'approved' ? '' : status === 'pending' ? 'pending' : 'cancelled'}">${escapeHtml(status)}</span></div><p>${escapeHtml(item.target_type)} · ${escapeHtml(item.target_value)} · ${formatNumber(item.customers)} clientes</p><div class="training-actions">${actions}</div></article>`;
+      }).join('') : '<div class="empty">Todavía no hay vocabulario aprendido.</div>';
+    }
+
+    async function loadTraining() {
+      const [review, rules, learned] = await Promise.all([
+        api('/review'), api('/training'), api('/learning')
+      ]);
+      renderTrainingReviews(review.reviews || []);
+      renderTrainingRules(rules.items || []);
+      renderLearnedVocabulary(learned.vocab || []);
+    }
+
+    async function saveTraining(question, answer, category) {
+      await api('/training', {
+        method: 'POST',
+        body: JSON.stringify({ question, answer, category })
+      });
+      showToast('Corrección guardada y activa.');
+      await loadTraining();
+    }
+
     function renderQuality() {
       const q = summary.quality;
       const confidence = q.averageConfidence === null ? 'Sin datos' : Math.round(q.averageConfidence * 100) + '%';
@@ -397,6 +470,7 @@
         const active = document.querySelector('.nav button.active')?.dataset.view || 'overview';
         if (active === 'customers') await loadCustomers();
         if (active === 'orders') await loadOrders();
+        if (active === 'training') await loadTraining();
       } catch (error) {
         showToast(error.message);
         if (!token) return;
@@ -406,17 +480,35 @@
     function changeView(name) {
       document.querySelectorAll('.nav button').forEach(button => button.classList.toggle('active', button.dataset.view === name));
       document.querySelectorAll('.view').forEach(view => view.classList.toggle('active', view.id === 'view-' + name));
-      const titles = { overview: ['Resumen', 'Actividad de WhatsApp, ventas y atención del equipo.'], customers: ['Clientes', 'Historial de atención y valor de cada relación.'], orders: ['Pedidos', 'Seguimiento de compras registradas y pagos.'], quality: ['Calidad IA', 'Señales de confianza para revisar el desempeño del asistente.'] };
+      const titles = { overview: ['Resumen', 'Actividad de WhatsApp, ventas y atención del equipo.'], customers: ['Clientes', 'Historial de atención y valor de cada relación.'], orders: ['Pedidos', 'Seguimiento de compras registradas y pagos.'], quality: ['Calidad IA', 'Señales de confianza para revisar el desempeño del asistente.'], training: ['Aprender', 'Correcciones supervisadas para las respuestas frecuentes.'] };
       $('#view-title').textContent = titles[name][0];
       $('#view-subtitle').textContent = titles[name][1];
       if (name === 'customers') loadCustomers().catch(error => showToast(error.message));
       if (name === 'orders') loadOrders().catch(error => showToast(error.message));
+      if (name === 'training') loadTraining().catch(error => showToast(error.message));
     }
 
     $('#login-form').addEventListener('submit', login);
     $('#logout').addEventListener('click', logout);
     $('#refresh').addEventListener('click', () => loadDashboard());
     $('#period').addEventListener('change', () => loadDashboard());
+    $('#refresh-training').addEventListener('click', () => loadTraining().catch(error => showToast(error.message)));
+    $('#training-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      try {
+        await saveTraining(form.elements.namedItem('question').value, form.elements.namedItem('answer').value, form.elements.namedItem('category').value);
+        form.reset();
+      } catch (error) { showToast(error.message); }
+    });
+    document.addEventListener('submit', async event => {
+      const form = event.target.closest('[data-correction-form]');
+      if (!form) return;
+      event.preventDefault();
+      try {
+        await saveTraining(form.elements.namedItem('question').value, form.elements.namedItem('answer').value, 'correction');
+      } catch (error) { showToast(error.message); }
+    });
     $('#customer-search').addEventListener('input', () => { clearTimeout(searchTimer); currentPage = 1; searchTimer = setTimeout(() => loadCustomers().catch(error => showToast(error.message)), 250); });
     document.addEventListener('click', event => {
       const viewButton = event.target.closest('[data-view]');
@@ -427,6 +519,27 @@
       if (customerButton) openCustomer(customerButton.dataset.customer);
       const pageButton = event.target.closest('[data-page]');
       if (pageButton && !pageButton.disabled) { currentPage = Number(pageButton.dataset.page); loadCustomers().catch(error => showToast(error.message)); }
+    });
+    document.addEventListener('click', async event => {
+      const deactivateButton = event.target.closest('[data-deactivate-training]');
+      if (deactivateButton) {
+        try {
+          await api('/training/' + encodeURIComponent(deactivateButton.dataset.deactivateTraining), { method: 'DELETE' });
+          showToast('Regla desactivada.');
+          await loadTraining();
+        } catch (error) { showToast(error.message); }
+        return;
+      }
+      const vocabButton = event.target.closest('[data-vocab-id]');
+      if (vocabButton) {
+        try {
+          await api('/learning/vocab/' + encodeURIComponent(vocabButton.dataset.vocabId), {
+            method: 'POST', body: JSON.stringify({ status: vocabButton.dataset.vocabStatus })
+          });
+          showToast('Vocabulario actualizado.');
+          await loadTraining();
+        } catch (error) { showToast(error.message); }
+      }
     });
     $('#drawer-close').addEventListener('click', () => $('#customer-drawer').classList.remove('open'));
     $('#customer-drawer').addEventListener('click', event => { if (event.target.id === 'customer-drawer') event.currentTarget.classList.remove('open'); });

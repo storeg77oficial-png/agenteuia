@@ -290,7 +290,9 @@
                 uc('conn-whatsapp', d.whatsapp === 'configured', d.whatsapp === 'configured' ? 'Conectado' : 'No configurado');
                 uc('conn-telegram', d.telegram === 'connected', d.telegram === 'connected' ? 'Conectado' : 'No configurado');
                 uc('conn-shopify', d.shopify === 'connected', d.shopify === 'connected' ? 'Conectado' : 'No configurado');
-                uc('conn-ngrok', d.ngrok === 'active', d.ngrok === 'active' ? 'Activo' : 'Inactivo');
+                const ngrokNotRequired = d.ngrok === 'not_applicable';
+                uc('conn-ngrok', d.ngrok === 'active' || ngrokNotRequired,
+                    ngrokNotRequired ? 'No requerido en Railway' : d.ngrok === 'active' ? 'Activo' : 'Inactivo');
                 document.getElementById('stat-messages').textContent = d.messages || 0;
                 document.getElementById('stat-products').textContent = d.products || 0;
                 document.getElementById('stat-connections').textContent = ([d.whatsapp==='configured',d.telegram==='connected',d.shopify==='connected'].filter(Boolean).length) + '/3';

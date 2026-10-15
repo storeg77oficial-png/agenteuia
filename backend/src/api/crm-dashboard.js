@@ -12,6 +12,7 @@ const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const { query } = require('../db');
 const learning = require('../ai/learning');
+const training = require('../ai/training');
 
 const ENV_PATH = path.join(__dirname, '..', '..', '.env');
 const dashboardLoginLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false });
@@ -225,6 +226,41 @@ router.post('/dashboard/learning/vocab/:id', requireDashboardAuth, async (req, r
     }
 });
 
+router.get('/dashboard/review', requireDashboardAuth, async (req, res) => {
+    try {
+                res.json({ reviews: await training.getReviewReplies(req.dashboardUser.tenantId, 30) });
+    } catch (error) {
+        res.status(500).json({ error: 'No se pudieron cargar las respuestas para revisar' });
+    }
+});
+
+router.get('/dashboard/training', requireDashboardAuth, async (req, res) => {
+    try {
+        res.json({ items: await training.listTrainingData(req.dashboardUser.tenantId) });
+    } catch (error) {
+        res.status(500).json({ error: 'No se pudo cargar el entrenamiento' });
+    }
+});
+
+router.post('/dashboard/training', requireDashboardAuth, async (req, res) => {
+    try {
+        const item = await training.addTrainingData(req.dashboardUser.tenantId, req.body || {});
+        res.status(201).json({ item });
+    } catch (error) {
+        const invalid = error.message.startsWith('La pregunta debe tener');
+        res.status(invalid ? 400 : 500).json({ error: invalid ? error.message : 'No se pudo guardar el entrenamiento' });
+    }
+});
+
+router.delete('/dashboard/training/:id', requireDashboardAuth, async (req, res) => {
+    try {
+        const deactivated = await training.deactivateTrainingData(req.dashboardUser.tenantId, req.params.id);
+        res.status(deactivated ? 200 : 404).json({ deactivated });
+    } catch (error) {
+        res.status(500).json({ error: 'No se pudo desactivar la regla' });
+    }
+});
+
 router.use(requireDashboardAuth);
 
 function readEnv() {
@@ -256,11 +292,30 @@ function writeEnv(updates) {
 router.get('/status', async (req, res) => {
     try {
         const env = readEnv();
-        let ngrok = 'inactive';
-        try {
-            const r = await axios.get('http://127.0.0.1:4040/api/tunnels', { timeout: 2000 });
-            ngrok = r.data.tunnels?.length > 0 ? 'active' : 'inactive';
-        } catch (e) {}
+        const tenantResult = await query(
+            `SELECT
+                COALESCE(whatsapp_phone_number_id, '') <> '' AND COALESCE(whatsapp_access_token, '') <> '' AS whatsapp_configured,
+                COALESCE(shopify_store_url, '') <> '' AND COALESCE(shopify_access_token, '') <> '' AS shopify_configured
+             FROM tenants WHERE id = $1 LIMIT 1`,
+            [req.dashboardUser.tenantId]
+        );
+        const tenant = tenantResult.rows[0] || {};
+        const whatsappConfigured = Boolean(
+            (env.WHATSAPP_PHONE_NUMBER_ID && env.WHATSAPP_ACCESS_TOKEN && env.WHATSAPP_ACCESS_TOKEN !== 'demo') ||
+            tenant.whatsapp_configured
+        );
+        const shopifyConfigured = Boolean(
+            (env.SHOPIFY_STORE_URL && env.SHOPIFY_ACCESS_TOKEN?.startsWith('shpat_')) ||
+            tenant.shopify_configured
+        );
+        const onRailway = Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID);
+        let ngrok = onRailway ? 'not_applicable' : 'inactive';
+        if (!onRailway) {
+            try {
+                const r = await axios.get('http://127.0.0.1:4040/api/tunnels', { timeout: 2000 });
+                ngrok = r.data.tunnels?.length > 0 ? 'active' : 'inactive';
+            } catch (e) {}
+        }
 
         let messages = 0, products = 0;
         try {
@@ -273,9 +328,9 @@ router.get('/status', async (req, res) => {
 
         res.json({
             server: 'online',
-            whatsapp: env.WHATSAPP_ACCESS_TOKEN && env.WHATSAPP_ACCESS_TOKEN !== 'demo' ? 'configured' : 'not_configured',
-            telegram: process.env.TELEGRAM_BOT_TOKEN ? 'connected' : 'not_configured',
-            shopify: env.SHOPIFY_ACCESS_TOKEN && env.SHOPIFY_ACCESS_TOKEN.startsWith('shpat_') ? 'connected' : 'not_configured',
+            whatsapp: whatsappConfigured ? 'configured' : 'not_configured',
+            telegram: env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID ? 'connected' : 'not_configured',
+            shopify: shopifyConfigured ? 'connected' : 'not_configured',
             ngrok,
             messages,
             products

@@ -3,6 +3,9 @@
  * Alerts, notifications, commands, and approvals
  */
 const axios = require('axios');
+const { query } = require('../db');
+const training = require('../ai/training');
+const learning = require('../ai/learning');
 
 let botToken = null;
 let chatId = null;
@@ -68,8 +71,17 @@ async function handleMessage(message) {
 
 async function handleCommand(chat, text, firstName) {
     const parts = text.split(' ');
-    const command = parts[0].toLowerCase();
+    const command = parts[0].split('@')[0].toLowerCase();
     const args = parts.slice(1);
+
+    if (['/errores', '/entrenar', '/corregir', '/vocabulario', '/palabra', '/aprobar_palabra', '/rechazar_palabra'].includes(command)) {
+        if (!chatId || String(chat) !== String(chatId)) {
+            await sendMessage(chat, 'Este chat no está autorizado para administrar el entrenamiento.');
+            return;
+        }
+        await handleTrainingCommand(chat, command, args.join(' '));
+        return;
+    }
     
     switch (command) {
         case '/start':
@@ -118,6 +130,86 @@ async function handleCommand(chat, text, firstName) {
     }
 }
 
+async function handleTrainingCommand(chat, command, input) {
+    try {
+        const tenantResult = await query("SELECT id FROM tenants WHERE status = 'active' ORDER BY created_at LIMIT 1");
+        const tenantId = tenantResult.rows[0]?.id;
+        if (!tenantId) {
+            await sendMessage(chat, 'No hay una tienda activa para entrenar.');
+            return;
+        }
+        const values = input.split('|').map(value => value.trim());
+
+        if (command === '/errores') {
+            const reviews = await training.getReviewReplies(tenantId, 5);
+            if (!reviews.length) {
+                await sendMessage(chat, 'No hay respuestas recientes para revisar.');
+                return;
+            }
+            const text = reviews.map((item, index) =>
+                `${index + 1}. ID: ${item.id}\nPregunta: ${(item.question || 'No identificada').slice(0, 220)}\nIA: ${(item.response || '').slice(0, 280)}`
+            ).join('\n\n');
+            await sendMessage(chat, `Respuestas recientes:\n\n${text}\n\nPara corregir: /corregir ID | pregunta | respuesta`);
+            return;
+        }
+
+        if (command === '/vocabulario') {
+            const overview = await learning.getLearningOverview(tenantId);
+            const pending = (overview.vocab || []).filter(item => item.status === 'pending').slice(0, 10);
+            if (!pending.length) {
+                await sendMessage(chat, 'No hay palabras pendientes de aprobación.');
+                return;
+            }
+            const text = pending.map(item =>
+                `ID: ${item.id}\n${item.term} → ${item.target_type}: ${item.target_value} (${item.customers} clientes)`
+            ).join('\n\n');
+            await sendMessage(chat, `Vocabulario pendiente:\n\n${text}\n\nUsa /aprobar_palabra ID o /rechazar_palabra ID.`);
+            return;
+        }
+
+        if (command === '/palabra') {
+            if (values.length < 3) {
+                await sendMessage(chat, 'Uso: /palabra término | category, brand o color | valor existente');
+                return;
+            }
+            const added = await learning.addVocab(tenantId, { term: values[0], type: values[1], value: values.slice(2).join(' | ') });
+            await sendMessage(chat, added ? 'Equivalencia aprobada y activa.' : 'No guardé la equivalencia. Revisa que el término y el destino existan en la tienda.');
+            return;
+        }
+
+        if (command === '/aprobar_palabra' || command === '/rechazar_palabra') {
+            const updated = await learning.setVocabStatus(tenantId, input.trim(), command === '/aprobar_palabra' ? 'approved' : 'rejected');
+            await sendMessage(chat, updated ? 'Estado de la palabra actualizado.' : 'No encontré esa palabra pendiente.');
+            return;
+        }
+
+        if (command === '/entrenar') {
+            if (values.length < 2) {
+                await sendMessage(chat, 'Uso: /entrenar pregunta frecuente | respuesta correcta');
+                return;
+            }
+            await training.addTrainingData(tenantId, { category: 'faq', question: values[0], answer: values.slice(1).join(' | ') });
+            await sendMessage(chat, 'Guardé la respuesta FAQ. La IA la usará cuando detecte una pregunta frecuente coincidente.');
+            return;
+        }
+
+        if (values.length < 3) {
+            await sendMessage(chat, 'Uso: /corregir ID | pregunta | respuesta correcta');
+            return;
+        }
+        const [messageId, question, ...answerParts] = values;
+        const review = await training.getReviewReplies(tenantId, 1, messageId);
+        if (!review.length) {
+            await sendMessage(chat, 'No encontré esa respuesta reciente para revisar. Envía /errores y usa el ID que aparece allí.');
+            return;
+        }
+        await training.addTrainingData(tenantId, { category: 'correction', question, answer: answerParts.join(' | ') });
+        await sendMessage(chat, 'Corrección guardada como ejemplo FAQ. Los datos de productos y existencias siguen viniendo del catálogo.');
+    } catch (error) {
+        await sendMessage(chat, `No pude guardar el entrenamiento: ${error.message}`);
+    }
+}
+
 function getHelpText() {
     return `🤖 *COMANDOS DEL BOT*
 
@@ -134,6 +226,15 @@ function getHelpText() {
 /alertas — Ver alertas pendientes
 /aprobar \[id\] — Aprobar acción
 /rechazar \[id\] — Rechazar acción
+
+🧠 *Entrenamiento supervisado:*
+/errores — Ver respuestas recientes
+/entrenar pregunta | respuesta — Añadir FAQ
+/corregir ID | pregunta | respuesta — Corregir una respuesta
+/vocabulario — Revisar equivalencias pendientes
+/palabra término | tipo | valor — Enseñar una equivalencia
+/aprobar_palabra ID — Aprobar una equivalencia
+/rechazar_palabra ID — Rechazar una equivalencia
 
 📱 *WhatsApp:*
 /enviar \[número\] \[mensaje\] — Enviar mensaje
@@ -301,4 +402,4 @@ async function sendAlert(text) {
     }
 }
 
-module.exports = { startTelegramBot, sendMessage, sendAlert };
+module.exports = { startTelegramBot, sendMessage, sendAlert, handleCommand };
